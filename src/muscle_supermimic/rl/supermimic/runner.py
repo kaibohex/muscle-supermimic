@@ -21,13 +21,14 @@ from dataclasses import asdict, fields
 
 import torch
 import torch.nn as nn
+import torch.utils.checkpoint
 from tensordict import TensorDict
 
 from muscle_supermimic.rl.supermimic import networks
 from muscle_supermimic.rl.supermimic.buffer import ReplayBuffer
 from muscle_supermimic.rl.supermimic.config import SuperMimicRunnerCfg
 from muscle_supermimic.rl.supermimic.networks import Critic, Policy, WorldModel
-from muscle_supermimic.tasks.tracking.mdp.heads import StepCtx, flatten_body, unflatten_body
+from muscle_supermimic.tasks.tracking.mdp.heads import NUM_TOUCH, StepCtx, flatten_body, unflatten_body
 
 
 class AnalyticObsGroup:
@@ -112,10 +113,10 @@ class SuperMimicRunner:
 
     def _build_networks(self):
         c, dev = self.cfg, self.device
-        self.wm = WorldModel(self.nq, self.nm, c.wm_hidden).to(dev)
+        self.wm = WorldModel(self.nq, self.nm, NUM_TOUCH, c.wm_hidden).to(dev)
         self.pi = Policy(self.obs_policy.dim, self.obs_goal.dim, self.nm, c.enc_hidden, c.dec_hidden, c.latent_dim,
                          c.init_excitation).to(dev)  # fmt: skip
-        self.critic = Critic(self.heads.critic_dim(self.nm) + self.obs_goal.dim, c.critic_hidden).to(dev)
+        self.critic = Critic(self.obs_policy.dim + self.obs_goal.dim + self.heads.critic_extras_dim(), c.critic_hidden).to(dev)
         self.critic_targ = self.critic
         if c.critic_target_alpha > 0:
             self.critic_targ = copy.deepcopy(self.critic).requires_grad_(False)
@@ -127,24 +128,28 @@ class SuperMimicRunner:
     # ------------------------------------------------------------------ analytic pieces
     def _wm_rollout(self, s, act, a):
         S, act = unflatten_body(s[:, 0], self.nq), act[:, 0]
-        preds = []
+        preds, touch = [], []
         for j in range(self.cfg.wm_window):
-            act, act_mean = self.muscle.step(act, a[:, j])
-            S = self.wm.step(S, act_mean)
-            preds.append(S)
-        return tuple(torch.stack([P[i] for P in preds], 1) for i in range(6))  # (B, k, ...)
+            act1, _ = self.muscle.step(act, a[:, j])
+            S, touch_n = self.wm.step(S, act, act1)
+            act = act1
+            preds.append(S), touch.append(touch_n)
+        return tuple(torch.stack([P[i] for P in preds], 1) for i in range(6)) + (torch.stack(touch, 1),)  # (B, k, ...)
 
-    def _wm_err(self, S_hat, s1, mask):
+    def _wm_err(self, S_hat, s1, touch1, mask):
         std = torch.maximum(self.wm.out_norm.std(), self.err_floor)
-        e = (self.wm.state_error(S_hat, unflatten_body(s1, self.nq)) / std) ** 2  # (B, k, D)
+        e = (self.wm.state_error(S_hat[:6], unflatten_body(s1, self.nq)) / std) ** 2  # (B, k, D)
         e = e.mean(-1)
-        return (e * mask).sum() / s1.shape[0], e[:, -1]
+        e_touch = ((S_hat[6] - self.wm.touch_norm(touch1)) ** 2).mean(-1)
+        loss = (e * mask).sum() / s1.shape[0] + self.cfg.touch_loss_weight * (e_touch * mask).sum() / s1.shape[0]
+        return loss, e[:, -1], (e_touch * mask).sum() / mask.sum().clamp(min=1)
 
     def _imag_step(self, S, hist, f, a_last):
         ctx = StepCtx(S, f, a_last)
         a = self.pi(self.obs_policy.assemble(hist, ctx), self.obs_goal.assemble(None, ctx))
-        act1, act_mean = self.muscle.step(S[6], a)
-        S1 = self.wm.step(S, act_mean) + (act1,)
+        act1, _ = self.muscle.step(S[6], a)
+        body1, touch_n = self.wm.step(S, S[6], act1)
+        S1 = body1 + (act1, self.wm.touch(touch_n))
         f1 = f + 1
         return S1, a, self.obs_policy.push(hist, StepCtx(S1, f1, a)), f1
 
@@ -156,9 +161,10 @@ class SuperMimicRunner:
             alive = alive * (1 - fn(self.heads, ctx, **p))
         return r, 1 - alive
 
-    def _critic_input(self, S, f):
-        ctx = StepCtx(S, f)
-        return torch.cat((self.heads.critic_features(ctx), self.obs_goal.assemble(None, ctx)), -1)
+    def _critic_input(self, S, f, a):
+        """The decoder observation, the goal and privileged reference errors (supermusclemimic's critic input)."""
+        ctx = StepCtx(S, f, a)
+        return torch.cat((self.obs_policy.assemble(None, ctx), self.obs_goal.assemble(None, ctx), self.heads.critic_extras(ctx)), -1)
 
     def value(self, x):
         """Bootstrap value: the target critic, optionally clamped to the attainable maximum."""
@@ -182,13 +188,13 @@ class SuperMimicRunner:
         c = self.cfg
         w = self.buffer.sample_windows(c.wm_batch, c.wm_window)
         S_hat = self.wm_rollout(w["s"], w["act"], w["a"])
-        loss, e_last = self.wm_err(S_hat, w["s1"], w["mask"])
+        loss, e_last, e_touch = self.wm_err(S_hat, w["s1"], w["touch1"], w["mask"])
         self.opt_wm.zero_grad(set_to_none=True)
         loss.backward()
         nn.utils.clip_grad_norm_(self.wm.parameters(), c.grad_clip)
         self.opt_wm.step()
         m = w["mask"][:, -1]
-        return loss.detach() / c.wm_window, (e_last.detach() * m).sum() / m.sum().clamp(min=1)
+        return loss.detach() / c.wm_window, (e_last.detach() * m).sum() / m.sum().clamp(min=1), e_touch.detach()
 
     def sample_valid_starts(self, B: int):
         starts, hists, n = [], [], 0
@@ -205,20 +211,24 @@ class SuperMimicRunner:
     def policy_update(self):
         c, dev, HZ, B = self.cfg, self.device, self.cfg.horizon, self.cfg.pi_batch
         s, h = self.sample_valid_starts(B)
-        S = unflatten_body(s["s"], self.nq) + (s["act"],)
+        S = unflatten_body(s["s"], self.nq) + (s["act"], s["touch"])
         f, a_last = s["f"], s["last_a"]
         with torch.no_grad():
-            hist = self.obs_policy.init_history(StepCtx(unflatten_body(h["s"], self.nq) + (h["act"],), h["f"], h["last_a"]))
+            S_h = unflatten_body(h["s"], self.nq) + (h["act"], h["touch"])
+            hist = self.obs_policy.init_history(StepCtx(S_h, h["f"], h["last_a"]))
         set_requires_grad(self.wm, False)
         set_requires_grad(self.critic, False)
-        S0, f0 = S, f
+        S0, f0, a0 = S, f, a_last
         Ss, As, Aps, Fs = [], [], [], []
+        step = self.imag_step
+        if c.remat_imagination:  # recompute each step in the backward pass instead of keeping its activations
+            step = lambda *x: torch.utils.checkpoint.checkpoint(self.imag_step, *x, use_reentrant=False)  # noqa: E731
         for _ in range(HZ):
             Aps.append(a_last)
-            S, a_last, hist, f = self.imag_step(S, hist, f, a_last)
+            S, a_last, hist, f = step(S, hist, f, a_last)
             Ss.append(S), As.append(a_last), Fs.append(f)
         flat = lambda xs: torch.stack(xs).flatten(0, 1)  # noqa: E731  (H*B, ...)
-        S_all = tuple(flat([St[i] for St in Ss]) for i in range(7))
+        S_all = tuple(flat([St[i] for St in Ss]) for i in range(len(S0)))
         r, d = self.reward_term(S_all, flat(Fs), flat(As), flat(Aps))
         r, d = r.view(HZ, B), d.view(HZ, B)
         alive = torch.cumprod(1 - d, 0)  # c_{t+1}
@@ -229,7 +239,7 @@ class SuperMimicRunner:
         r_sum = (c_t * r).detach().sum(0)
         rews, dones = r.detach(), d.detach()
         if c.use_critic:
-            J = J + (c.gamma**HZ) * surv * self.value(self.critic_input(S, f))
+            J = J + (c.gamma**HZ) * surv * self.value(self.critic_input(S, f, a_last))
         loss = -J.mean()
         self.opt_pi.zero_grad(set_to_none=True)
         loss.backward()
@@ -243,9 +253,9 @@ class SuperMimicRunner:
         v_loss = torch.zeros((), device=dev)
         if c.use_critic:
             with torch.no_grad():
-                S_c = tuple(torch.cat((S0[i].unsqueeze(0), torch.stack([St[i].detach() for St in Ss])), 0).flatten(0, 1) for i in range(7))
-                f_c = torch.cat((f0.unsqueeze(0), torch.stack(Fs)), 0).flatten()
-                X = self.critic_input(S_c, f_c).view(HZ + 1, B, -1)
+                # one imagined step at a time: the muscle geometry of all (H+1) x B states at once is large
+                X = torch.stack([self.critic_input(tuple(x.detach() for x in St), ft, at.detach())
+                                 for St, ft, at in zip([S0, *Ss], [f0, *Fs], [a0, *As], strict=True)])  # fmt: skip
             self.critic.norm.update(X)
             with torch.no_grad():
                 V = self.value(X)
@@ -286,11 +296,11 @@ class SuperMimicRunner:
             obs, rew, dones, _ = self.env.step(a)
             S1 = cmd.read_state()
             done = dones.bool()
-            self.buffer.add({"s": flatten_body(S), "act": S[6], "a": a, "s1": flatten_body(S1), "r": rew, "f": f,
-                             "ep_step": ep_step, "done": done})  # fmt: skip
-            act_mean = self.muscle.step(S[6], a)[1]
-            self.wm.in_norm.update(self.wm.inputs(S, act_mean))
+            self.buffer.add({"s": flatten_body(S), "act": S[6], "touch": S[7], "a": a, "s1": flatten_body(S1), "touch1": S1[7],
+                             "r": rew, "f": f, "ep_step": ep_step, "done": done})  # fmt: skip
+            self.wm.in_norm.update(self.wm.inputs(S, S[6], S1[6]))
             self.wm.out_norm.update(self.wm.targets(S, S1))
+            self.wm.touch_norm.update(S1[7])
             self.sim_steps += N
             self.ep_ret += rew
             stats["r"].append(rew.mean() / self.max_step_reward)
@@ -313,14 +323,14 @@ class SuperMimicRunner:
         del init_at_random_ep_len  # episodes already start at sampled reference frames
         c, u = self.cfg, self.uenv
         assert not u.cfg.auto_reset, "SuperMimic records terminal states: the training env needs auto_reset=False"
-        self.buffer = ReplayBuffer(c.buffer_steps, u.num_envs, self.heads.body_state_dim, self.nm, self.device)
+        self.buffer = ReplayBuffer(c.buffer_steps, u.num_envs, self.heads.body_state_dim, self.nm, NUM_TOUCH, self.device)
         self.ep_ret = torch.zeros(u.num_envs, device=self.device)
         self.obs = self.env.get_observations()
         logger = self._make_logger()
         stats = {"r": [], "r_terms": [], "ep_len": [], "ep_ret": [], "term": [], "done": []}
         self.collect(max(c.warmup_steps, c.wm_window + self.hist + 1), stats)
         t_start, t_log, step_acc = time.time() - self.wall_offset, time.time(), 0.0
-        agg = {"wm": [], "wm8": [], "pi": [], "v": [], "ir": [], "gn": [], "surv": []}
+        agg = {"wm": [], "wm8": [], "wmt": [], "pi": [], "v": [], "ir": [], "gn": [], "surv": []}
         start_it = self.it
         for it in range(start_it, start_it + num_learning_iterations):
             lr = self.lr_at(it)
@@ -332,8 +342,8 @@ class SuperMimicRunner:
             step_acc -= n
             self.collect(n, stats)
             for _ in range(c.wm_batches):
-                l, e8 = self.wm_update()
-            agg["wm"].append(l), agg["wm8"].append(e8)
+                l, e8, et = self.wm_update()
+            agg["wm"].append(l), agg["wm8"].append(e8), agg["wmt"].append(et)
             if it >= c.wm_only_iters:
                 pl, vl, ir, gn, surv = self.policy_update()
                 agg["pi"].append(pl), agg["v"].append(vl), agg["ir"].append(ir), agg["gn"].append(gn), agg["surv"].append(surv)
@@ -345,7 +355,7 @@ class SuperMimicRunner:
                 wall_h = (time.time() - t_start) / 3600
                 term_frac = float(sum(float(v) for v in stats["term"]) / max(sum(float(v) for v in stats["done"]), 1))
                 row = {"iteration": self.it, "wall_h": wall_h, "sim_steps": self.sim_steps, "wm_loss": mean(agg["wm"]),
-                       "wm_err8": mean(agg["wm8"]), "pi_loss": mean(agg["pi"]), "v_loss": mean(agg["v"]), "imag_rew": mean(agg["ir"]),
+                       "wm_err8": mean(agg["wm8"]), "wm_touch": mean(agg["wmt"]), "pi_loss": mean(agg["pi"]), "v_loss": mean(agg["v"]), "imag_rew": mean(agg["ir"]),
                        "pi_gradnorm": mean(agg["gn"]), "imag_survival": mean(agg["surv"]), "sim_rew": mean(stats["r"]),
                        "ep_len": mean(stats["ep_len"]), "ep_ret_norm": mean(stats["ep_ret"]), "term_frac": term_frac,
                        "it_per_s": ips, "lr": lr,

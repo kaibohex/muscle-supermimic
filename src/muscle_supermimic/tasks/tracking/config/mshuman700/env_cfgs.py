@@ -1,13 +1,14 @@
 """MS-Human-700 flat-ground tracking environment configurations."""
 
 from mjlab.envs import ManagerBasedRlEnvCfg
+from mjlab.sensor import ContactMatch, ContactSensorCfg
 
 from muscle_supermimic.assets.robots import get_mshuman700_cfg
 from muscle_supermimic.tasks.tracking.mdp import MotionCommandCfg
 from muscle_supermimic.tasks.tracking.tracking_env_cfg import make_tracking_env_cfg
 
-# SuperMimic's 14 G1 bodies mapped onto the human skeleton (pelvis first: it is the root/anchor), plus the
-# toes: hips, knees, ankles, toes, the trunk above the lumbar/thoracic joints, head, shoulders, elbows, wrists.
+# MuscleMimic's 17 mimic sites (pelvis first: the main site) as body frames, whose origins sit at the joints the sites
+# mark: hips, knees, ankles, toes, the trunk above the lumbar/thoracic joints, head, shoulders, elbows, wrists.
 TRACKED_BODIES: tuple[str, ...] = (
     "pelvis",
     "femur_r", "tibia_r", "calcn_r", "toes_r",
@@ -16,6 +17,7 @@ TRACKED_BODIES: tuple[str, ...] = (
     "humerus_r", "ulna_r", "hand_r",
     "humerus_l", "ulna_l", "hand_l",
 )  # fmt: skip
+FOOT_BODIES: tuple[str, ...] = ("calcn_r", "toes_r", "calcn_l", "toes_l")
 
 
 def mshuman700_flat_tracking_env_cfg(play: bool = False, lock_hands: bool = False) -> ManagerBasedRlEnvCfg:
@@ -29,7 +31,17 @@ def mshuman700_flat_tracking_env_cfg(play: bool = False, lock_hands: bool = Fals
     assert isinstance(motion_cmd, MotionCommandCfg)
     motion_cmd.body_names = TRACKED_BODIES
     cfg.viewer.body_name = "pelvis"
-    cfg.scene.num_envs = 4096  # paper Table A.5
+    # MyoFullBody's four foot touch sensors: heel and toes per side, as the ground's net force on those bodies
+    cfg.scene.sensors = (
+        ContactSensorCfg(
+            name=motion_cmd.touch_sensor_name,
+            primary=ContactMatch(mode="body", pattern=FOOT_BODIES, entity="robot"),
+            secondary=ContactMatch(mode="body", pattern="terrain"),
+            fields=("force",),
+            reduce="netforce",
+        ),
+    )
+    cfg.scene.num_envs = 4096  # supermusclemimic (and paper Table A.5)
     if play:
         # mjlab's play loop expects auto-reset; play every clip from its first frame
         cfg.scene.num_envs = 1

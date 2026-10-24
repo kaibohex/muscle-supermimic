@@ -1,14 +1,11 @@
 """SuperMimic motion-tracking task configuration (robot-agnostic part).
 
-Re-implements the MDP of SuperMimic (Liao et al., CoRL 2026, Appendix A) as reproduced by
-supermimic_vibed (github.com/zita-ch/supermimic_vibed) on mjlab terms: BeyondMimic tracking reward
-without the self-collision term, termination |e_z| > 0.25 m or e_tilt > 0.8, proprioception with a
-10-frame history and K = 10 future reference frames as the goal.
-
-Three muscle-specific changes, taken from MuscleMimic (where SuperMimic trains stably on a muscle
-model): the policy also observes the current muscle activations, episodes also end on MuscleMimic's
-deviation checks (mean root-relative body position, root position and root orientation), and the
-reward has no action-rate or joint-limit penalty.
+SuperMimic (Liao et al., CoRL 2026) trained on MuscleMimic's MDP, as supermusclemimic does (SuperMimic on
+the MuscleMimic full-body task, where it trains stably on a muscle model): 100 Hz control (2 ms x 5),
+MuscleMimic's observation (full state incl. muscle length / velocity / force / excitation / activation
+and foot touch, no history), its concise goal (5 reference frames 0.2 s apart and the motion phase), its
+MimicReward with the full-body weights (no penalties), scaled by 0.1, and its deviation terminations
+(mean root-relative site position, root position, root orientation; 1 m / 1 m / 1 rad).
 
 No randomization of any kind: no domain randomization events, no observation noise, no reset noise.
 Robot-specific settings are in ``config/``.
@@ -28,6 +25,8 @@ from mjlab.viewer import ViewerConfig
 from muscle_supermimic.tasks.tracking import mdp
 
 CMD = {"command_name": "motion"}
+TIMESTEP, DECIMATION = 0.002, 5
+REWARD_SCALE = 0.1
 
 
 def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
@@ -37,22 +36,14 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
     # Observations
     ##
 
-    # supermimic: o_t = (q - q0, qd, IMU w, projected gravity, a_{t-1}, ref root ori), o_{t-9:t} to the decoder
-    hist = {"params": CMD, "history_length": 10}
-    proprio_terms = {
-        "joint_pos": ObservationTermCfg(func=mdp.joint_pos, **hist),
-        "joint_vel": ObservationTermCfg(func=mdp.joint_vel, **hist),
-        "root_ang_vel_b": ObservationTermCfg(func=mdp.root_ang_vel_b, **hist),
-        "projected_gravity": ObservationTermCfg(func=mdp.projected_gravity, **hist),
-        "last_action": ObservationTermCfg(func=mdp.last_action, **hist),
-        "motion_ref_ori_b": ObservationTermCfg(func=mdp.motion_ref_ori_b, **hist),
-        # muscle-specific: the current activations (as MuscleMimic observes), no history
-        "muscle_act": ObservationTermCfg(func=mdp.muscle_act, params=CMD),
-    }
-    # supermimic: g_t = K future reference frames, to the motion encoder
+    # MuscleMimic: the decoder sees the full state and the state-dependent part of the goal (no history)
+    decoder = ("root_pos", "joint_pos", "root_vel", "joint_vel", "muscle_length", "muscle_velocity", "muscle_force",
+               "muscle_excitation", "muscle_activation", "touch", "site_rpos", "site_rangles", "site_rvel")  # fmt: skip
+    decoder_terms = {name: ObservationTermCfg(func=getattr(mdp, name), params=CMD) for name in decoder}
+    # the encoder sees the reference-only part of the goal
     goal_terms = {"motion_goal": ObservationTermCfg(func=mdp.motion_goal, params=CMD)}
     observations = {
-        "policy": ObservationGroupCfg(terms=proprio_terms, concatenate_terms=True, enable_corruption=False),
+        "policy": ObservationGroupCfg(terms=decoder_terms, concatenate_terms=True, enable_corruption=False),
         "goal": ObservationGroupCfg(terms=goal_terms, concatenate_terms=True, enable_corruption=False),
     }
 
@@ -71,7 +62,6 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
             entity_name="robot",
             motion_file="",  # set on the CLI: --env.commands.motion.motion-file (play: --motion-file)
             body_names=(),  # set per robot
-            future_frames=10,
             sampling_mode="return",
         )
     }
@@ -80,16 +70,14 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
     # Rewards
     ##
 
+    # MimicReward: weight (w_sum) and kernel (w_exp) per component, times supermusclemimic's reward_scale 0.1;
+    # mjlab multiplies the weights by the step dt
+    scale = REWARD_SCALE / (TIMESTEP * DECIMATION)
+    mimic = {"qpos": (0.1, 10.0), "qvel": (0.1, 2.0), "root_pos": (0.1, 10.0), "root_vel": (0.1, 10.0), "rpos": (0.6, 100.0),
+             "rquat": (0.01, 10.0), "rvel_rot": (0.1, 0.1), "rvel_lin": (0.1, 0.1)}  # fmt: skip
     rewards: dict[str, RewardTermCfg] = {
-        "motion_root_pos": RewardTermCfg(func=mdp.motion_root_pos_exp, weight=0.5, params={**CMD, "std": 0.3}),
-        "motion_root_ori": RewardTermCfg(func=mdp.motion_root_ori_exp, weight=0.5, params={**CMD, "std": 0.4}),
-        "motion_body_pos": RewardTermCfg(func=mdp.motion_body_pos_exp, weight=1.0, params={**CMD, "std": 0.3}),
-        "motion_body_ori": RewardTermCfg(func=mdp.motion_body_ori_exp, weight=1.0, params={**CMD, "std": 0.4}),
-        "motion_body_lin_vel": RewardTermCfg(func=mdp.motion_body_lin_vel_exp, weight=1.0, params={**CMD, "std": 1.0}),
-        "motion_body_ang_vel": RewardTermCfg(func=mdp.motion_body_ang_vel_exp, weight=1.0, params={**CMD, "std": 3.14}),
-        # supermimic's action-rate (-0.1) and joint-limit (-2) penalties are dropped, as MuscleMimic does: summed over
-        # ~620 muscles and the joints a collapsing body pins at their limits, they matched the tracking reward and
-        # drove the net step reward to zero or below, so staying alive was worth nothing
+        f"mimic_{k}": RewardTermCfg(func=getattr(mdp, f"mimic_{k}"), weight=w * scale, params={**CMD, "w_exp": e})
+        for k, (w, e) in mimic.items()
     }
 
     ##
@@ -99,9 +87,6 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
     terminations: dict[str, TerminationTermCfg] = {
         "time_out": TerminationTermCfg(func=mdp.time_out, time_out=True),
         "motion_end": TerminationTermCfg(func=mdp.motion_end, params=CMD, time_out=True),
-        "root_height": TerminationTermCfg(func=mdp.bad_root_height, params={**CMD, "threshold": 0.25, "soft_width": 0.02}),
-        "root_tilt": TerminationTermCfg(func=mdp.bad_root_tilt, params={**CMD, "threshold": 0.8, "soft_width": 0.04}),
-        # MuscleMimic's deviation checks with supermusclemimic's thresholds (1 m, 1 m, 1 rad; soft width 5 % of each)
         "body_pos_dev": TerminationTermCfg(func=mdp.bad_body_pos_dev, params={**CMD, "threshold": 1.0, "soft_width": 0.05}),
         "root_pos_dev": TerminationTermCfg(func=mdp.bad_root_pos_dev, params={**CMD, "threshold": 1.0, "soft_width": 0.05}),
         "root_ori_dev": TerminationTermCfg(func=mdp.bad_root_ori_dev, params={**CMD, "threshold": 1.0, "soft_width": 0.05}),
@@ -131,9 +116,9 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
         sim=SimulationCfg(
             nconmax=48,
             njmax=320,
-            mujoco=MujocoCfg(timestep=0.002, iterations=10, ls_iterations=20),
+            mujoco=MujocoCfg(timestep=TIMESTEP, iterations=10, ls_iterations=20),
         ),
-        decimation=10,  # 50 Hz control
+        decimation=DECIMATION,  # 100 Hz control, as MyoFullBody
         episode_length_s=10.0,
         # the SuperMimic runner resets done envs itself, after it has recorded their terminal state
         auto_reset=False,

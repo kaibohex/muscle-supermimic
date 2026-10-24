@@ -1,7 +1,6 @@
-"""Termination terms. Failure: SuperMimic's |e_z| > 0.25 m or tilt error > 0.8 on the root, and
-MuscleMimic's deviation checks (mean root-relative body position, root position, root orientation),
-all sigmoid-softened in imagination with ``soft_width``; time-outs: episode length and the clip's last
-frame (bootstrapped)."""
+"""Termination terms. Failure: MuscleMimic's deviation checks (mean root-relative site position, root
+position, root orientation), sigmoid-softened in imagination with ``soft_width``; time-outs: episode length
+and the clip's last frame (bootstrapped)."""
 
 from __future__ import annotations
 
@@ -21,18 +20,6 @@ if TYPE_CHECKING:
 def _ctx(env: ManagerBasedRlEnv, command_name: str):
     cmd: MotionCommand = env.command_manager.get_term(command_name)
     return cmd.heads, cmd.transition_ctx()
-
-
-@analytic(H.bad_root_height)
-def bad_root_height(env: ManagerBasedRlEnv, command_name: str, threshold: float, soft_width: float) -> torch.Tensor:
-    del soft_width  # imagination only
-    return H.bad_root_height(*_ctx(env, command_name), threshold=threshold)
-
-
-@analytic(H.bad_root_tilt)
-def bad_root_tilt(env: ManagerBasedRlEnv, command_name: str, threshold: float, soft_width: float) -> torch.Tensor:
-    del soft_width  # imagination only
-    return H.bad_root_tilt(*_ctx(env, command_name), threshold=threshold)
 
 
 @analytic(H.bad_body_pos_dev)

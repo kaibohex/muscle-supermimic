@@ -28,11 +28,10 @@ import torch
 
 from muscle_supermimic.assets.robots import mshuman700
 from muscle_supermimic.assets.robots.model_info import ModelInfo
-from muscle_supermimic.utils.rotations import mat_to_6d, mat_to_quat, quat_slerp, quat_to_mat, so3_log, yaw_mat
+from muscle_supermimic.utils.rotations import mat_to_quat, quat_slerp, quat_to_mat, so3_log
 
 from .kinematics import SkeletonKinematics
 
-GOAL_FRAME_EXTRA = 3 + 6 + 3 + 3  # root dp, rot6, root v, root w (+ q, qd per frame)
 QPOS_WIDTH = {int(mujoco.mjtJoint.mjJNT_FREE): 7, int(mujoco.mjtJoint.mjJNT_BALL): 4,
               int(mujoco.mjtJoint.mjJNT_SLIDE): 1, int(mujoco.mjtJoint.mjJNT_HINGE): 1}  # fmt: skip
 
@@ -146,10 +145,6 @@ class MotionLib:
                 out = kin.forward(self.root_p[s:e], self.root_R[s:e], self.root_v[s:e], self.root_w[s:e], self.q[s:e], self.qd[s:e])
                 bp.append(out[0]), bR.append(out[1]), bv.append(out[2]), bw.append(out[3])
             self.body_p, self.body_R, self.body_v, self.body_w = torch.cat(bp), torch.cat(bR), torch.cat(bv), torch.cat(bw)
-        # per-frame static goal parts: root velocities in the root frame
-        Rt = self.root_R.transpose(-1, -2)
-        self.root_v_local = (Rt @ self.root_v.unsqueeze(-1)).squeeze(-1)
-        self.root_w_local = (Rt @ self.root_w.unsqueeze(-1)).squeeze(-1)
         # 1 s bins for return-based reset sampling
         bin_clip, bin_start = [], []
         for c in range(len(lens)):
@@ -168,31 +163,6 @@ class MotionLib:
     @staticmethod
     def from_path(path: str, kin: SkeletonKinematics, control_dt: float, device: str, bin_frames: int = 50) -> MotionLib:
         return MotionLib(motion_files(path), kin, control_dt, device, bin_frames)
-
-    @property
-    def num_joints(self) -> int:
-        return self.q.shape[-1]
-
-    def goal_dim(self, K: int) -> int:
-        return K * (GOAL_FRAME_EXTRA + 2 * self.num_joints)
-
-    def future_frames(self, f: torch.Tensor, K: int) -> torch.Tensor:
-        """Frames f+1..f+K clamped to the clip's last frame, shape (B, K)."""
-        end = self.clip_end[self.clip_id[f]]
-        fut = f.unsqueeze(-1) + torch.arange(1, K + 1, device=f.device)
-        return torch.minimum(fut, end.unsqueeze(-1))
-
-    def goal(self, f: torch.Tensor, K: int) -> torch.Tensor:
-        """Goal features from the reference only: K future frames relative to the current reference frame."""
-        fut = self.future_frames(f, K)  # (B,K)
-        H = yaw_mat(self.root_R[f])  # (B,3,3)
-        Ht = H.transpose(-1, -2).unsqueeze(1)
-        dp = (Ht @ (self.root_p[fut] - self.root_p[f].unsqueeze(1)).unsqueeze(-1)).squeeze(-1)
-        rot = mat_to_6d(Ht @ self.root_R[fut])
-        feats = torch.cat(
-            (dp, rot, self.root_v_local[fut], self.root_w_local[fut], self.q[fut], self.qd[fut] * 0.1), -1
-        )  # (B,K,15+2*J)
-        return feats.reshape(f.shape[0], -1)
 
     def ref_state(self, f: torch.Tensor):
         return self.root_p[f], self.root_R[f], self.root_v[f], self.root_w[f], self.q[f], self.qd[f]

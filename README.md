@@ -5,13 +5,14 @@ imagined rollouts) driving whole-body musculoskeletal models -- **MS-Human-700**
 muscles, 37 independent joint DoF + free root) and MuscleMimic's **MyoFullBody** (354 muscles, 31
 independent joint DoF + free root, fingers disabled) -- built on [mjlab](https://github.com/mujocolab/mjlab)
 (MuJoCo-Warp). The algorithm follows the unofficial reproduction
-[supermimic_vibed](https://github.com/zita-ch/supermimic_vibed) (MIT); its MDP (observations,
-rewards, terminations, reset sampling) and hyperparameters are kept as they are, and only what the
-muscle-actuated plant requires is changed (see [Deviations](#deviations-from-supermimic_vibed)).
+[supermimic_vibed](https://github.com/zita-ch/supermimic_vibed) (MIT). The task (MDP) follows
+**MuscleMimic** as supermusclemimic runs SuperMimic on it -- the setup in which SuperMimic trains
+stably on a muscle model: MuscleMimic's 100 Hz control, observation, goal, MimicReward and deviation
+terminations (see [MDP](#mdp-musclemimics)).
 
-Status: the algorithm runs end to end (CPU tests below). It has **not been trained on a GPU yet**:
-throughput, memory and learning results are unverified. Motion capture data is still to come; a
-msgym walking clip is used for testing.
+Status: MS-Human-700 runs on a single A100 40 GB with 4096 envs; MyoFullBody is tested on CPU only so
+far. Motion capture data for MS-Human-700 is still to come; a msgym walking clip is used for testing.
+MyoFullBody trains on MuscleMimic's retargeted AMASS clips.
 
 ## Layout (mjlab conventions)
 
@@ -22,12 +23,12 @@ msgym walking clip is used for testing.
 | `src/muscle_supermimic/assets/robots/mshuman700/` | `EntityCfg`: the 6 pelvis DoF become a free joint, scene decoration stripped, muscles wrapped by `XmlActuatorCfg` |
 | `src/muscle_supermimic/assets/robots/myofullbody/` | `EntityCfg` for MyoFullBody, loaded from the `musclemimic-models` package as MuscleMimic does: scene stripped, default pose turned to face +x, fingers disabled as in MuscleMimic |
 | `src/muscle_supermimic/tasks/tracking/tracking_env_cfg.py` | the task's `ManagerBasedRlEnvCfg`: observations, actions, command, rewards, terminations, sim |
-| `src/muscle_supermimic/tasks/tracking/mdp/` | `kinematics.py` differentiable FK, `muscle.py` activation dynamics, `motion.py` reference library, `heads.py` analytic MDP, `commands.py` motion command (reset sampling), `actions.py`, `observations.py`, `rewards.py`, `terminations.py` |
+| `src/muscle_supermimic/tasks/tracking/mdp/` | `kinematics.py` differentiable FK, `muscle.py` activation dynamics, `muscle_geometry.py` muscle length / velocity / force, `motion.py` reference library, `heads.py` analytic MDP, `commands.py` motion command (reset sampling), `actions.py`, `observations.py`, `rewards.py`, `terminations.py` |
 | `src/muscle_supermimic/tasks/tracking/config/mshuman700/` | robot binding, registration of `Mjlab-SuperMimic-Flat-MS-Human-700` and `...-Locked-Hands` |
 | `src/muscle_supermimic/tasks/tracking/config/myofullbody/` | robot binding, registration of `Mjlab-SuperMimic-Flat-MyoFullBody` |
 | `src/muscle_supermimic/tasks/tracking/scripts/` | `convert_motion.py` (`ms-convert-motion`), `evaluate.py` (`ms-eval`) |
 | `src/muscle_supermimic/rl/supermimic/` | the SuperMimic runner (`runner.py`), world model / policy / critic (`networks.py`), replay buffer, config |
-| `tests/` | FK (both robots) and activation dynamics vs MuJoCo; muscle-joint map vs finite-difference moment arms; MyoFullBody vs MuscleMimic's finger removal and its retargeted body poses; simulator vs analytic heads; a tiny end-to-end training run (all tasks) |
+| `tests/` | FK, activation dynamics and muscle length / velocity / force vs MuJoCo (both robots); muscle-joint map vs finite-difference moment arms; MyoFullBody vs MuscleMimic's finger removal and its retargeted body poses; simulator vs analytic heads; a tiny end-to-end training run (all tasks) |
 
 The tasks are registered through the `mjlab.tasks` entry point, so mjlab's own `train` / `play` CLIs
 run them with the SuperMimic runner (`register_mjlab_task(..., runner_cls=SuperMimicRunner)`).
@@ -75,7 +76,8 @@ is a motion library. Three formats are read:
   joint first, and `frequency` -- MuscleMimic's retargeted MyoFullBody caches as they are. Coupled
   joints are ignored here too.
 
-Clips are resampled to 50 Hz; velocities come from finite differences, as in supermimic_vibed.
+Clips are resampled to the control rate (100 Hz); velocities come from finite differences, as in
+supermimic_vibed.
 
 Test clip (msgym's one walking cycle, tiled into 8 cycles / 9.4 s):
 
@@ -110,17 +112,6 @@ test clip (`tests/test_myofullbody.py`). Everything else matches them to < 1 mm.
 | `Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands` | 33 + free root | 694 |
 | `Mjlab-SuperMimic-Flat-MyoFullBody` | 31 + free root | 354 |
 
-**MyoFullBody** (`get_myofullbody_cfg()`), as MuscleMimic configures it for full-body tracking: the model
-comes from `musclemimic_models.get_xml_path("myofullbody")`; MuscleMimic's `disable_fingers` deletes
-the 40 finger joints and the 62 finger muscles with their tendons (wrists stay); the 75 explicit
-self-contact pairs (arms vs thorax and legs, leg vs leg) stay, robot geoms otherwise touch the ground
-only; two abdominal slides held at zero by `<equality>` are coupled joints with a constant. Upstream's
-default pose faces -y; the entity turns it to face +x. The root is the free joint's body `Full Body`, to
-which the pelvis is welded (same origin). Tracked bodies: the 17 bodies of MuscleMimic's mimic sites
-(pelvis, lumbar1, head, humerus, ulna, lunate, femur, tibia, talus, toes); the root-relative deviation
-check leaves out the pelvis, as MuscleMimic's does. MuJoCo-Warp budget per env as in MuscleMimic:
-`nconmax` 96, `njmax` 768.
-
 **Locked hands** (`get_mshuman700_cfg(lock_hands=True)`): every joint in the `proximal_row_{r,l}`
 subtrees is deleted -- per side the wrist's `deviation` / `flexion` and the two `wrist_hand` joints
 coupled to them -- so each hand is welded to its radius in the neutral pose (q = 0, which satisfies the
@@ -131,6 +122,16 @@ The other 42 muscles crossing the wrist also cross the elbow and/or the radiouln
 and stay; 16 of them (per side FDP x4, FDS index/middle, EIP, EPL) reach `pro_sup` only, with moment
 arms of 0.3-3.5 mm there against 7-42 mm at the wrist. Reference clips keep their wrist columns; they are
 ignored. Motion command, FK, observations and action size follow the entity's variant automatically.
+
+**MyoFullBody** (`get_myofullbody_cfg()`), as MuscleMimic configures it for full-body tracking: the model
+comes from `musclemimic_models.get_xml_path("myofullbody")`; MuscleMimic's `disable_fingers` deletes
+the 40 finger joints and the 62 finger muscles with their tendons (wrists stay); the 75 explicit
+self-contact pairs (arms vs thorax and legs, leg vs leg) stay, robot geoms otherwise touch the ground
+only; two abdominal slides held at zero by `<equality>` are coupled joints with a constant. Upstream's
+default pose faces -y; the entity turns it to face +x. The root is the free joint's body `Full Body`, to
+which the pelvis is welded (same origin). Foot touch is read like MS-Human-700's, as the ground's net
+force on the bodies of MyoFullBody's four touch sensor sites (calcn and toes per side). MuJoCo-Warp budget
+per env as in MuscleMimic: `nconmax` 96, `njmax` 768.
 
 ## Usage
 
@@ -157,65 +158,62 @@ Memory with the defaults, roughly: replay buffer ~14 GB (4096 x 1000 transitions
 and excitations in fp16), imagination BPTT (4096 x 32 steps) a few tens of GB. `--agent.buffer-steps`,
 `--agent.pi-batch` and `--env.scene.num-envs` are the knobs.
 
-## What is the same as supermimic_vibed
+## MDP (MuscleMimic's)
 
-* **Observation** (decoder, 10-frame history; plus the activations, see below): q - q0, q̇, root angular velocity (IMU), projected
-  gravity, a_{t-1}, reference root orientation relative to the robot (6D). **Goal** (encoder): K=10
-  future reference frames (root displacement and orientation in the heading frame, root velocities in
-  the root frame, q, 0.1 q̇).
-* **Reward** (x dt): BeyondMimic tracking on 17 bodies (body pos 0.3 / ori 0.4 / lin vel 1.0 / ang vel
-  3.14, root pos 0.3 and ori 0.4 at weight 0.5, reference re-anchored to the robot's xy + yaw); no
-  self-collision term, and (see below) no action-rate or joint-limit penalty.
-* **Termination**: |e_z| > 0.25 m or tilt error > 0.8 (sigmoid-softened in imagination; plus MuscleMimic's deviation checks, see below); time-outs at
-  10 s and at the clip end, bootstrapped.
+Every term is an analytic function of the state, evaluated identically on simulator and imagined
+states. MuscleMimic's 17 mimic sites are the frames of 17 tracked bodies, pelvis first (the main site):
+on MyoFullBody the sites' own bodies (pelvis, lumbar1, head, humerus, ulna, lunate, femur, tibia, talus,
+toes), on MS-Human-700 bodies whose origins sit at the joints the sites mark (pelvis, femur, tibia, calcn,
+toes x2, thoracic12, head_neck, humerus, ulna, hand x2).
+
+* **Control**: 100 Hz (2 ms x 5 substeps), as MyoFullBody.
+* **Observation** (decoder, no history): free-joint height and quaternion, every joint position, the
+  free joint's qvel, every joint velocity, muscle length / velocity / force / excitation / activation,
+  four foot touch values (ground force on heel and toes), and the root-relative site positions, rotation
+  vectors and 6D velocities (GoalTrajMimic's state-dependent part).
+* **Goal** (encoder): GoalTrajMimic's concise lookahead -- the reference's root-relative site positions
+  at the current frame and 4 frames 0.2 s apart, with root position and qvel deltas -- and the motion phase.
+* **Reward**: MimicReward with the full-body weights (qpos 0.1, qvel 0.1, root pos 0.1, root vel 0.1,
+  site rpos 0.6, site rquat 0.01, site rvel 0.1 + 0.1; kernels 10 / 2 / 10 / 10 / 100 / 10 / 0.1), times
+  supermusclemimic's reward scale 0.1; no penalties (all off in the full-body configuration).
+* **Termination**: mean root-relative site deviation > 1 m, root position deviation > 1 m, root
+  orientation deviation > 1 rad (sigmoid-softened with 5 % widths in imagination); time-outs at 10 s
+  and at the clip end, bootstrapped.
+
+Muscle length, velocity and force on imagined states come from a torch replica of MuJoCo's spatial
+tendons (site-site segments, sphere / cylinder wraps with side sites and inside wraps) and Hill muscle
+curves (`mdp/muscle_geometry.py`, equal to MuJoCo's `actuator_length / velocity / force` to 1e-9 /
+1e-8 / 1e-6). Foot touch, which depends on contacts, is predicted by an extra world-model head.
+
+## Algorithm (supermimic_vibed, as supermusclemimic adapts it to muscles)
+
 * **Reset sampling**: 1 s bins, 50% uniform / 40% softmax(-25 G_b / G_max) / 10% its running average.
-* **World model** MLP(2048,2048,2048) + LayerNorm + SiLU on heading-invariant features, frame-local
-  increments, k=8-step autoregressive loss with per-component error floors; **policy** encoder
-  MLP(2048,1024,512,256) → z∈R^32 (tanh) + decoder MLP(2048,1024,512,256); **critic** MLP(256,128) on
-  GAE(λ=0.95) targets, 5 epochs x 4 minibatches; BPTT over H=32 imagined steps with soft survival and
-  critic bootstrap; Adam 2e-4 (policy β=(0.9,0.95)), cosine decay to 0.03x over 250k iterations, grad
-  clip 1.0 (+0.1 element-wise for the policy), γ=0.99, 500 world-model-only iterations, bf16 MLPs.
+* **World model** MLP(2048,2048,2048) + LayerNorm + SiLU on heading-invariant features and the
+  activations before and after the step, frame-local increments plus a foot-touch head, k=8-step
+  autoregressive loss with per-component error floors (+ touch MSE). Activations are integrated
+  analytically with MuJoCo's own substeps (they match the simulator to float precision).
+* **Policy** encoder MLP(2048,1024,512,256) → z∈R^32 (tanh) + decoder MLP(2048,1024,512,256) →
+  excitations e = sigmoid(·) in [0, 1], initialized at 0.1; exploration noise N(0, 0.1²) on e, clipped.
+* **Critic** MLP(256,128) on the decoder observation, the goal and privileged reference errors (root
+  position in the heading frame, heading error, joint position and velocity errors), GAE(λ=0.95)
+  targets, 5 epochs x 4 minibatches. BPTT over H=32 imagined steps (0.32 s) with soft survival and
+  critic bootstrap, each step recomputed in the backward pass; Adam 2e-4 (policy β=(0.9,0.95)), cosine
+  decay to 0.03x over 250k iterations, grad clip 1.0 (+0.1 element-wise for the policy), γ=0.99, 500
+  world-model-only iterations, bf16 MLPs, 4096 envs, imagination batch 4096.
 * **Evaluation**: App. F.1 as in supermimic_vibed.
 
-## Deviations from supermimic_vibed
+Model-specific: coupled joints come from the `<equality>` polynomials (the torch FK replicates
+`mj_kinematics` to 1e-9). MS-Human-700: 37 independent and 42 coupled joints; one free joint for the root
+instead of 6 OpenSim DoF; robot-robot contacts disabled; upstream, the arms have no collision geoms.
+MyoFullBody: 31 independent and 51 coupled joints; MuscleMimic's self-contact pairs kept. Optional, off by default
+(`--agent.critic-target-alpha`, `--agent.value-clip`): a SHAC-style target critic and clamping
+bootstrapped values to the attainable maximum.
 
-Required by the muscle-actuated model:
-
-* **Action** = 700 muscle excitations. The decoder outputs logits, `e = sigmoid(logits)` is the env
-  action (initialized at e = 0.05); exploration noise N(0, 0.1²) is added to e and clipped to [0, 1], as
-  supermimic adds it to the action (on the logits it would shrink to 0.1 e(1-e) at low e). The a_{t-1}
-  observation is on e.
-* **Muscle activations are state.** The plant's 700 activations (time constants 10/40 ms) are part of
-  the state; their dynamics are known exactly, so they are integrated analytically with MuJoCo's own
-  substeps (matches the simulator to float precision) instead of being learned. The world model
-  predicts the body state only; its action input is the substep-mean activation of the step. The
-  critic sees the activations too.
-* **Kinematics**: 37 independent joints; the 42 coupled joints come from the `<equality>` polynomials
-  (in FK and when writing reset states). The torch FK replicates `mj_kinematics` (multi-joint bodies,
-  off-origin joints, welded bodies) and matches MuJoCo to 1e-9.
-* **Root**: one free joint instead of 6 OpenSim DoF (no gimbal lock), canonical z-up root frame.
-* **Tracked bodies**: pelvis, femur, tibia, calcn, toes (x2), thoracic12, head_neck, humerus, ulna,
-  hand (x2) — the G1 set mapped onto the skeleton, plus the toes.
-* **Simulator**: mjlab / MuJoCo-Warp, 2 ms x 10 substeps (50 Hz, the model's native timestep),
-  implicitfast, Newton 10 iterations; MS-Human-700's robot-robot contacts disabled (as in
-  supermimic_vibed; upstream, its arms have no collision geoms, so hands and arms pass through the
-  ground). MyoFullBody keeps MuscleMimic's self-contact pairs.
-
-Taken from MuscleMimic, where SuperMimic trains stably on a muscle model (supermusclemimic), after the
-runs here kept losing the critic:
-
-* **Observation**: the decoder also sees the current 700 activations (no history), as MuscleMimic's
-  policy does; otherwise it has to infer them from the 10-step excitation history.
-* **Termination**: MuscleMimic's deviation checks on top of the above -- mean root-relative body
-  position error > 1 m, root position error > 1 m (catches horizontal drift), root orientation error
-  > 1 rad (heading included), the thresholds of supermusclemimic's runs; softened with 5 % widths.
-* **Reward**: no action-rate (-0.1) or joint-limit (-2) penalty, as in MuscleMimic (both coefficients
-  0). Summed over ~620 muscles (G1: 29 actuators) and over the joints a collapsing body pins at their
-  limits, they were as large as the tracking reward: the net step reward sat at zero or below, staying
-  alive was worth nothing (imagined survival never rose) and every critic diverged.
-
-Optional, off by default (`--agent.critic-target-alpha`, `--agent.value-clip`): a SHAC-style target
-critic and clamping bootstrapped values to the attainable maximum.
+Why MuscleMimic's MDP: with supermimic's own (BeyondMimic reward with action-rate and joint-limit
+penalties, height/tilt terminations, 50 Hz, 10-frame proprioceptive history) every run lost its critic
+200-400 iterations after policy updates started. The penalties, summed over 694 muscles (G1: 29
+actuators) and over the joints a collapsing body pins at their limits, were as large as the tracking
+reward, so staying alive was worth nothing (imagined survival never rose).
 
 By request, for now:
 

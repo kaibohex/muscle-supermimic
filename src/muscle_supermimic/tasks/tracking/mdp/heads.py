@@ -1,11 +1,20 @@
-"""Analytic MDP heads shared by the simulator and the world model (SuperMimic paper Appendix A).
+"""Analytic MDP heads shared by the simulator and the world model.
 
-Port of supermimic_vibed's ``mdp.py``. The state tuple is
-``S = (p, R, v, w, q, qd, act)``: root position, canonical root rotation matrix, world linear and
-angular velocity of the root link frame, the independent joint positions and velocities (MS-Human-700:
-37), and the muscle activations (the plant's actuator state; MS-Human-700: 700). Every observation, reward and termination term
-of the mjlab task is a function of a :class:`StepCtx` built on such a state, so the same code labels
-simulator transitions (through the managers) and imagined ones (in the SuperMimic runner).
+The MDP is MuscleMimic's, as supermusclemimic runs SuperMimic on it (where SuperMimic trains stably on a
+muscle model): its observation (root height and orientation, every joint position and velocity, muscle
+length / velocity / force / excitation / activation, foot touch, and the root-relative positions, rotations
+and velocities of the mimic sites), its goal (a concise lookahead of 5 reference frames 0.2 s apart and the
+motion phase), its ``MimicReward`` and its deviation terminations. Tracked bodies stand in for MuscleMimic's
+17 mimic sites (pelvis, torso, head, shoulders, elbows, hands, hips, knees, ankles, toes): on MyoFullBody
+they are the sites' own bodies (each site at its body's origin), on MS-Human-700 17 bodies whose origins
+sit at the joints the sites mark. Quantities are computed the way MuscleMimic computes them, quirks
+included (noted where they occur).
+
+The state tuple is ``S = (p, R, v, w, q, qd, act, touch)``: root position, canonical root rotation
+matrix, world linear and angular velocity of the root link frame, the independent joint positions and
+velocities, the muscle activations and the four foot touch values. Every observation, reward and
+termination term of the mjlab task is a function of a :class:`StepCtx` built on such a state, so the same
+code labels simulator transitions (through the managers) and imagined ones (in the SuperMimic runner).
 """
 
 from __future__ import annotations
@@ -14,12 +23,14 @@ from dataclasses import dataclass, field
 
 import torch
 
-from muscle_supermimic.utils.rotations import mat_to_6d, mat_to_quat, quat_to_mat, rot_angle_sq, yaw_mat
+from muscle_supermimic.utils.rotations import mat_to_6d, mat_to_quat, quat_to_mat, so3_log, yaw_mat
 
 from .kinematics import SkeletonKinematics
 from .motion import MotionLib
+from .muscle_geometry import MuscleGeometry
 
 BODY_STATE_DIM_EXTRA = 3 + 4 + 3 + 3  # p, quat, v, w (+ q, qd)
+NUM_TOUCH = 4  # right heel, right toes, left heel, left toes (MyoFullBody's foot touch sensors)
 
 
 @dataclass
@@ -27,7 +38,7 @@ class StepCtx:
     """What an analytic term may look at.
 
     ``S`` is the state, ``f`` the reference frame it is compared with, ``a`` the action that led to
-    ``S`` (the "last action" of an observation) and ``a_prev`` the action before it.
+    ``S`` (the excitation it observes) and ``a_prev`` the action before it.
     """
 
     S: tuple
@@ -51,29 +62,51 @@ def invariant_features(S) -> torch.Tensor:
     p, R, v, w, q, qd = S[:6]
     H = yaw_mat(R)
     Rt = R.transpose(-1, -2)
-    return torch.cat(
-        (
-            p[..., 2:3],
-            mat_to_6d(H.transpose(-1, -2) @ R),
-            (Rt @ v.unsqueeze(-1)).squeeze(-1),
-            (Rt @ w.unsqueeze(-1)).squeeze(-1),
-            q,
-            qd,
-        ),
-        -1,
-    )
+    return torch.cat((p[..., 2:3], mat_to_6d(H.transpose(-1, -2) @ R), (Rt @ v.unsqueeze(-1)).squeeze(-1),
+                      (Rt @ w.unsqueeze(-1)).squeeze(-1), q, qd), -1)  # fmt: skip
+
+
+def rot_angle(Ra: torch.Tensor, Rb: torch.Tensor) -> torch.Tensor:
+    """Geodesic angle between rotations (via the relative quaternion: exact near 0, finite gradient)."""
+    q = mat_to_quat(Ra.transpose(-1, -2) @ Rb)
+    return 2 * torch.atan2((q[..., 1:] ** 2).sum(-1).clamp(min=1e-30).sqrt(), q[..., 0].abs())
+
+
+def rel_sites(P, R, V, W):
+    """MuscleMimic's ``calculate_relative_site_quantities`` with the first body (the pelvis) as the main site:
+    world-frame position offsets, rotation vectors of R_main^T R_site, and its 6D relative velocity
+    [ang, lin]. As in MuscleMimic, the linear part is R_main (v_main - v_site) and the angular part
+    (R_main^T R_site)^T w_site - w_main."""
+    P0, R0, V0, W0 = P[..., :1, :], R[..., :1, :, :], V[..., :1, :], W[..., :1, :]
+    rrot = R0.transpose(-1, -2) @ R[..., 1:, :, :]
+    rpos = P[..., 1:, :] - P0
+    lin = (R0 @ (V0 - V[..., 1:, :]).unsqueeze(-1)).squeeze(-1)
+    ang = (rrot.transpose(-1, -2) @ W[..., 1:, :].unsqueeze(-1)).squeeze(-1) - W0
+    return rpos, so3_log(rrot), torch.cat((ang, lin), -1)
+
+
+def _mv(R: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+    return (R @ x.unsqueeze(-1)).squeeze(-1)
 
 
 class TrackingHeads:
-    def __init__(self, kin: SkeletonKinematics, motion: MotionLib, default_q: torch.Tensor, future_frames: int):
-        self.kin, self.motion, self.default_q, self.K = kin, motion, default_q, future_frames
+    def __init__(self, kin: SkeletonKinematics, motion: MotionLib, geometry: MuscleGeometry, lookahead: int = 5,
+                 stride: int = 20):  # fmt: skip
+        assert kin.tracked_on_root[0], "the first tracked body must be rigid with the root (MuscleMimic's main site)"
+        self.kin, self.motion, self.geo, self.lookahead, self.stride = kin, motion, geometry, lookahead, stride
         self.nq = kin.num_q
         self.body_state_dim = BODY_STATE_DIM_EXTRA + 2 * self.nq
         self.inv_dim = 1 + 6 + 3 + 3 + 2 * self.nq
         self.num_tracked = len(kin.tracked_idx)
-        # tracked bodies other than the root's own rigid body, for root-relative deviations (MuscleMimic's
-        # relative mimic sites leave out the pelvis site)
-        self.rel_tracked = torch.tensor([i for i, r in enumerate(kin.tracked_on_root) if not r], device=kin.device)
+        # per reference frame, in MuscleMimic's conventions: every joint, the free joint's qvel [v world, w body],
+        # the root velocity of its reward [R^T v, w body] and the relative site quantities
+        m = motion
+        self.ref_q, self.ref_qd = kin.full_joint_state(m.q, m.qd)
+        Rp = m.root_R @ kin.R_off.T
+        w_body = _mv(Rp.transpose(-1, -2), m.root_w)
+        self.ref_root_qvel = torch.cat((m.root_v, w_body), -1)
+        self.ref_root_vel = torch.cat((_mv(Rp.transpose(-1, -2), m.root_v), w_body), -1)
+        self.ref_rpos, self.ref_rangles, self.ref_rvel = rel_sites(m.body_p, m.body_R, m.body_v, m.body_w)
 
     # ---------------- shared pieces (cached per ctx) ----------------
     def fk(self, ctx: StepCtx):
@@ -82,100 +115,146 @@ class TrackingHeads:
             ctx.cache["fk"] = self.kin.forward(p, R, v, w, q, qd)
         return ctx.cache["fk"]
 
-    def anchored_ref(self, ctx: StepCtx):
-        """Reference bodies re-anchored to the robot's root (xy + yaw), as in BeyondMimic."""
-        if "ref" not in ctx.cache:
-            m, f = self.motion, ctx.f
-            p, R = ctx.S[0], ctx.S[1]
-            rp, rR = m.root_p[f], m.root_R[f]
-            dR = yaw_mat(R @ rR.transpose(-1, -2))
-            anchor = torch.cat((p[..., :2], rp[..., 2:3]), -1)
-            ref_bp = anchor.unsqueeze(-2) + (dR.unsqueeze(-3) @ (m.body_p[f] - rp.unsqueeze(-2)).unsqueeze(-1)).squeeze(-1)
-            ref_bR = dR.unsqueeze(-3) @ m.body_R[f]
-            ctx.cache["ref"] = (ref_bp, ref_bR)
-        return ctx.cache["ref"]
+    def sites(self, ctx: StepCtx):
+        if "sites" not in ctx.cache:
+            ctx.cache["sites"] = rel_sites(*self.fk(ctx))
+        return ctx.cache["sites"]
 
-    # ---------------- observation pieces (supermimic: q - q0, qd, IMU w, g, a_{t-1}, ref ori) ----------------
+    def joints(self, ctx: StepCtx):
+        if "joints" not in ctx.cache:
+            ctx.cache["joints"] = self.kin.full_joint_state(ctx.S[4], ctx.S[5])
+        return ctx.cache["joints"]
+
+    def muscles(self, ctx: StepCtx):
+        """Muscle lengths, velocities and forces of the state."""
+        if "muscles" not in ctx.cache:
+            L, Ld = self.geo.length_velocity(ctx.S[4], ctx.S[5])
+            ctx.cache["muscles"] = (L, Ld, self.geo.force(L, Ld, ctx.S[6]))
+        return ctx.cache["muscles"]
+
+    def pelvis(self, ctx: StepCtx):
+        """The free joint's rotation (its body's frame: MS-Human-700's pelvis, MyoFullBody's ``Full Body``, to
+        which the pelvis is welded) and its qvel [v world, w body]."""
+        if "pelvis" not in ctx.cache:
+            Rp = ctx.S[1] @ self.kin.R_off.T
+            ctx.cache["pelvis"] = (Rp, torch.cat((ctx.S[2], _mv(Rp.transpose(-1, -2), ctx.S[3])), -1))
+        return ctx.cache["pelvis"]
+
+    # ---------------- observation pieces (MyoFullBody's observation, then the goal's state part) ----------------
+    def root_pos(self, ctx: StepCtx) -> torch.Tensor:
+        """Free joint position without x, y: height and quaternion (wxyz)."""
+        return torch.cat((ctx.S[0][..., 2:3], mat_to_quat(self.pelvis(ctx)[0])), -1)
+
     def joint_pos(self, ctx: StepCtx) -> torch.Tensor:
-        return ctx.S[4] - self.default_q
+        return self.joints(ctx)[0]
+
+    def root_vel(self, ctx: StepCtx) -> torch.Tensor:
+        return self.pelvis(ctx)[1]
 
     def joint_vel(self, ctx: StepCtx) -> torch.Tensor:
-        return ctx.S[5]
+        return self.joints(ctx)[1]
 
-    def root_ang_vel_b(self, ctx: StepCtx) -> torch.Tensor:
-        R, w = ctx.S[1], ctx.S[3]
-        return (R.transpose(-1, -2) @ w.unsqueeze(-1)).squeeze(-1)
+    def muscle_length(self, ctx: StepCtx) -> torch.Tensor:
+        return self.muscles(ctx)[0]
 
-    def projected_gravity(self, ctx: StepCtx) -> torch.Tensor:
-        return -ctx.S[1][..., 2, :]  # R^T (0, 0, -1)
+    def muscle_velocity(self, ctx: StepCtx) -> torch.Tensor:
+        return self.muscles(ctx)[1]
 
-    def motion_ref_ori_b(self, ctx: StepCtx) -> torch.Tensor:
-        """Reference root orientation relative to the robot root (BeyondMimic's motion_anchor_ori_b)."""
-        return mat_to_6d(ctx.S[1].transpose(-1, -2) @ self.motion.root_R[ctx.f])
+    def muscle_force(self, ctx: StepCtx) -> torch.Tensor:
+        return self.muscles(ctx)[2]
 
-    def goal(self, ctx: StepCtx) -> torch.Tensor:
-        return self.motion.goal(ctx.f, self.K)
+    def muscle_excitation(self, ctx: StepCtx) -> torch.Tensor:
+        return ctx.a
 
-    def muscle_act(self, ctx: StepCtx) -> torch.Tensor:
-        """Muscle activations, the plant state a rigid robot does not have (MuscleMimic observes it too)."""
+    def muscle_activation(self, ctx: StepCtx) -> torch.Tensor:
         return ctx.S[6]
 
-    # ---------------- critic ----------------
-    def critic_features(self, ctx: StepCtx) -> torch.Tensor:
-        """Critic input: invariant state (incl. muscle activations) and robot-vs-reference errors."""
-        m, f = self.motion, ctx.f
-        p, R, q, act = ctx.S[0], ctx.S[1], ctx.S[4], ctx.S[6]
-        Ht = yaw_mat(R).transpose(-1, -2)
-        bp = self.fk(ctx)[0]
-        ref_bp = self.anchored_ref(ctx)[0]
-        e_body = (Ht.unsqueeze(-3) @ (ref_bp - bp).unsqueeze(-1)).squeeze(-1).flatten(-2)
-        e_root = (Ht @ (m.root_p[f] - p).unsqueeze(-1)).squeeze(-1)
-        rel = mat_to_6d(R.transpose(-1, -2) @ m.root_R[f])
-        return torch.cat((invariant_features(ctx.S), act, m.q[f] - q, e_body, e_root, rel), -1)
+    def touch(self, ctx: StepCtx) -> torch.Tensor:
+        return ctx.S[7]
 
-    def critic_dim(self, num_muscles: int) -> int:
-        return self.inv_dim + num_muscles + self.nq + 3 * self.num_tracked + 3 + 6
+    def site_rpos(self, ctx: StepCtx) -> torch.Tensor:
+        return self.sites(ctx)[0].flatten(-2)
+
+    def site_rangles(self, ctx: StepCtx) -> torch.Tensor:
+        return self.sites(ctx)[1].flatten(-2)
+
+    def site_rvel(self, ctx: StepCtx) -> torch.Tensor:
+        return self.sites(ctx)[2].flatten(-2)
+
+    # ---------------- goal: the reference-only part of GoalTrajMimic (concise lookahead + motion phase) ----------------
+    def goal(self, ctx: StepCtx) -> torch.Tensor:
+        m, f = self.motion, ctx.f
+        c = m.clip_id[f]
+        parts = [self.ref_rpos[f].flatten(-2)]
+        for k in range(1, self.lookahead):
+            g = torch.minimum(f + k * self.stride, m.clip_end[c])
+            parts += [m.root_p[g] - m.root_p[f], self.ref_root_qvel[g] - self.ref_root_qvel[f], self.ref_rpos[g].flatten(-2)]
+        parts.append(((f - m.clip_start[c]).float() / m.clip_len[c].float()).unsqueeze(-1))
+        return torch.cat(parts, -1)
+
+    def goal_dim(self) -> int:
+        n = 3 * (self.num_tracked - 1)
+        return n + (self.lookahead - 1) * (3 + 6 + n) + 1
+
+    # ---------------- critic: privileged reference errors (supermusclemimic's critic_extras) ----------------
+    def critic_extras(self, ctx: StepCtx) -> torch.Tensor:
+        m, f = self.motion, ctx.f
+        p, R = ctx.S[0], ctx.S[1]
+        e_root = _mv(yaw_mat(R).transpose(-1, -2), m.root_p[f] - p)
+        Rr = m.root_R[f]
+        dyaw = torch.atan2(Rr[..., 1, 0], Rr[..., 0, 0]) - torch.atan2(R[..., 1, 0], R[..., 0, 0])
+        q, qd = self.joints(ctx)
+        return torch.cat((e_root, torch.sin(dyaw).unsqueeze(-1), torch.cos(dyaw).unsqueeze(-1), self.ref_q[f] - q, self.ref_qd[f] - qd), -1)
+
+    def critic_extras_dim(self) -> int:
+        return 3 + 2 + 2 * self.ref_q.shape[-1]
 
 
 # ---------------- analytic term implementations (signature: (heads, ctx, **params)) ----------------
-def root_pos_exp(h: TrackingHeads, ctx: StepCtx, std: float) -> torch.Tensor:
-    e = ((h.motion.root_p[ctx.f] - ctx.S[0]) ** 2).sum(-1)
-    return torch.exp(-e / std**2)
+# MimicReward (use_mean_exp_reward=False): exp(-w_exp * mean squared error) per component
 
 
-def root_ori_exp(h: TrackingHeads, ctx: StepCtx, std: float) -> torch.Tensor:
-    return torch.exp(-rot_angle_sq(h.motion.root_R[ctx.f], ctx.S[1]) / std**2)
+def mimic_qpos(h: TrackingHeads, ctx: StepCtx, w_exp: float) -> torch.Tensor:
+    """Root position and every joint (squared errors, averaged) plus the root quaternion's angle."""
+    f = ctx.f
+    e = torch.cat(((h.motion.root_p[f] - ctx.S[0]) ** 2, (h.ref_q[f] - h.joints(ctx)[0]) ** 2), -1).mean(-1)
+    return torch.exp(-w_exp * (e + rot_angle(h.motion.root_R[f], ctx.S[1])))
 
 
-def body_pos_exp(h: TrackingHeads, ctx: StepCtx, std: float) -> torch.Tensor:
-    e = ((h.anchored_ref(ctx)[0] - h.fk(ctx)[0]) ** 2).sum(-1).mean(-1)
-    return torch.exp(-e / std**2)
+def mimic_qvel(h: TrackingHeads, ctx: StepCtx, w_exp: float) -> torch.Tensor:
+    f = ctx.f
+    e = torch.cat(((h.ref_root_qvel[f] - h.pelvis(ctx)[1]) ** 2, (h.ref_qd[f] - h.joints(ctx)[1]) ** 2), -1).mean(-1)
+    return torch.exp(-w_exp * e)
 
 
-def body_ori_exp(h: TrackingHeads, ctx: StepCtx, std: float) -> torch.Tensor:
-    e = rot_angle_sq(h.anchored_ref(ctx)[1], h.fk(ctx)[1]).mean(-1)
-    return torch.exp(-e / std**2)
+def mimic_root_pos(h: TrackingHeads, ctx: StepCtx, w_exp: float) -> torch.Tensor:
+    return torch.exp(-w_exp * ((h.motion.root_p[ctx.f] - ctx.S[0]) ** 2).mean(-1))
 
 
-def body_lin_vel_exp(h: TrackingHeads, ctx: StepCtx, std: float) -> torch.Tensor:
-    e = ((h.motion.body_v[ctx.f] - h.fk(ctx)[2]) ** 2).sum(-1).mean(-1)
-    return torch.exp(-e / std**2)
+def mimic_root_vel(h: TrackingHeads, ctx: StepCtx, w_exp: float) -> torch.Tensor:
+    """[R^T v, w body] (MuscleMimic calls the body-frame angular velocity of qvel global)."""
+    Rp, qvel = h.pelvis(ctx)
+    vel = torch.cat((_mv(Rp.transpose(-1, -2), qvel[..., :3]), qvel[..., 3:]), -1)
+    return torch.exp(-w_exp * ((h.ref_root_vel[ctx.f] - vel) ** 2).mean(-1))
 
 
-def body_ang_vel_exp(h: TrackingHeads, ctx: StepCtx, std: float) -> torch.Tensor:
-    e = ((h.motion.body_w[ctx.f] - h.fk(ctx)[3]) ** 2).sum(-1).mean(-1)
-    return torch.exp(-e / std**2)
+def mimic_rpos(h: TrackingHeads, ctx: StepCtx, w_exp: float) -> torch.Tensor:
+    return torch.exp(-w_exp * ((h.ref_rpos[ctx.f] - h.sites(ctx)[0]) ** 2).mean((-1, -2)))
 
 
-def action_rate_l2(h: TrackingHeads, ctx: StepCtx) -> torch.Tensor:
-    return ((ctx.a - ctx.a_prev) ** 2).sum(-1)
+def mimic_rquat(h: TrackingHeads, ctx: StepCtx, w_exp: float) -> torch.Tensor:
+    return torch.exp(-w_exp * ((h.ref_rangles[ctx.f] - h.sites(ctx)[1]) ** 2).mean((-1, -2)))
 
 
-def joint_pos_limits(h: TrackingHeads, ctx: StepCtx, soft_limit_factor: float) -> torch.Tensor:
-    lo, hi = h.kin.q_lo, h.kin.q_hi
-    mid, half = (lo + hi) / 2, (hi - lo) / 2 * soft_limit_factor
-    q = ctx.S[4]
-    return (torch.relu(q - (mid + half)) + torch.relu((mid - half) - q)).sum(-1)
+def mimic_rvel_rot(h: TrackingHeads, ctx: StepCtx, w_exp: float) -> torch.Tensor:
+    return torch.exp(-w_exp * ((h.ref_rvel[ctx.f][..., :3] - h.sites(ctx)[2][..., :3]) ** 2).mean((-1, -2)))
+
+
+def mimic_rvel_lin(h: TrackingHeads, ctx: StepCtx, w_exp: float) -> torch.Tensor:
+    return torch.exp(-w_exp * ((h.ref_rvel[ctx.f][..., 3:] - h.sites(ctx)[2][..., 3:]) ** 2).mean((-1, -2)))
+
+
+# MuscleMimic's MeanRelativeSiteDeviationWithRootTerminalStateHandler, sigmoid-softened in imagination
 
 
 def _exceeds(e: torch.Tensor, threshold: float, soft_width: float | None) -> torch.Tensor:
@@ -187,23 +266,9 @@ def _norm(x: torch.Tensor) -> torch.Tensor:
     return (x**2).sum(-1).add(1e-12).sqrt()  # finite gradient at 0
 
 
-def bad_root_height(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_width: float | None = None) -> torch.Tensor:
-    e_z = (h.motion.root_p[ctx.f][..., 2] - ctx.S[0][..., 2]).abs()
-    return _exceeds(e_z, threshold, soft_width)
-
-
-def bad_root_tilt(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_width: float | None = None) -> torch.Tensor:
-    e_tilt = (h.motion.root_R[ctx.f][..., 2, 2] - ctx.S[1][..., 2, 2]).abs()
-    return _exceeds(e_tilt, threshold, soft_width)
-
-
-# MuscleMimic's MeanRelativeSiteDeviationWithRootTerminalStateHandler, on the tracked bodies
 def bad_body_pos_dev(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_width: float | None = None) -> torch.Tensor:
-    """Mean distance between robot and reference body positions relative to their roots (world frame)."""
-    m, f, i = h.motion, ctx.f, h.rel_tracked
-    rel = h.fk(ctx)[0][..., i, :] - ctx.S[0].unsqueeze(-2)
-    ref = m.body_p[f][..., i, :] - m.root_p[f].unsqueeze(-2)
-    return _exceeds(_norm(rel - ref).mean(-1), threshold, soft_width)
+    """Mean distance between robot and reference site positions relative to the root (world frame)."""
+    return _exceeds(_norm(h.ref_rpos[ctx.f] - h.sites(ctx)[0]).mean(-1), threshold, soft_width)
 
 
 def bad_root_pos_dev(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_width: float | None = None) -> torch.Tensor:
@@ -213,7 +278,7 @@ def bad_root_pos_dev(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_widt
 
 def bad_root_ori_dev(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_width: float | None = None) -> torch.Tensor:
     """Geodesic angle between robot and reference root orientations (heading included)."""
-    return _exceeds(rot_angle_sq(h.motion.root_R[ctx.f], ctx.S[1]).sqrt(), threshold, soft_width)
+    return _exceeds(rot_angle(h.motion.root_R[ctx.f], ctx.S[1]), threshold, soft_width)
 
 
 def analytic(fn):

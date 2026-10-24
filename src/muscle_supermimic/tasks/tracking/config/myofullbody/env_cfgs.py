@@ -1,6 +1,7 @@
 """MyoFullBody flat-ground tracking environment configurations."""
 
 from mjlab.envs import ManagerBasedRlEnvCfg
+from mjlab.sensor import ContactMatch, ContactSensorCfg
 
 from muscle_supermimic.assets.robots import get_myofullbody_cfg
 from muscle_supermimic.tasks.tracking.mdp import MotionCommandCfg
@@ -15,6 +16,8 @@ TRACKED_BODIES: tuple[str, ...] = (
     "femur_l", "tibia_l", "talus_l", "toes_l",
     "femur_r", "tibia_r", "talus_r", "toes_r",
 )  # fmt: skip
+# The bodies of MyoFullBody's touch sensor sites, in MuscleMimic's order: r_foot, r_toes, l_foot, l_toes.
+FOOT_BODIES: tuple[str, ...] = ("calcn_r", "toes_r", "calcn_l", "toes_l")
 
 
 def myofullbody_flat_tracking_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
@@ -29,9 +32,20 @@ def myofullbody_flat_tracking_env_cfg(play: bool = False) -> ManagerBasedRlEnvCf
     assert isinstance(motion_cmd, MotionCommandCfg)
     motion_cmd.body_names = TRACKED_BODIES
     cfg.viewer.body_name = "pelvis"
+    # foot touch as the ground's net force on the bodies of the touch sensor sites (what those sensors read on
+    # flat ground), the same reading as MS-Human-700's
+    cfg.scene.sensors = (
+        ContactSensorCfg(
+            name=motion_cmd.touch_sensor_name,
+            primary=ContactMatch(mode="body", pattern=FOOT_BODIES, entity="robot"),
+            secondary=ContactMatch(mode="body", pattern="terrain"),
+            fields=("force",),
+            reduce="netforce",
+        ),
+    )
     # MuscleMimic's per-env MuJoCo-Warp budget for this model (self-contact pairs + 51 equality rows)
     cfg.sim.nconmax, cfg.sim.njmax = 96, 768
-    cfg.scene.num_envs = 4096  # paper Table A.5
+    cfg.scene.num_envs = 4096  # supermusclemimic (and paper Table A.5)
     if play:
         # mjlab's play loop expects auto-reset; play every clip from its first frame
         cfg.scene.num_envs = 1

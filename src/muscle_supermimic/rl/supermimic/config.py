@@ -37,13 +37,15 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     wm_batch: int = 2048
     wm_only_iters: int = 500
     """World-model-only iterations at the start."""
+    touch_loss_weight: float = 1.0
+    """Weight of the world model's foot-touch loss (supermusclemimic's)."""
 
     # policy and critic
     enc_hidden: tuple[int, ...] = (2048, 1024, 512, 256)
     dec_hidden: tuple[int, ...] = (2048, 1024, 512, 256)
     latent_dim: int = 32
     critic_hidden: tuple[int, ...] = (256, 128)
-    init_excitation: float = 0.05
+    init_excitation: float = 0.1
     """Initial policy output: every muscle at this excitation (sigmoid of the decoder's output bias)."""
     horizon: int = 32
     pi_batch: int = 4096
@@ -52,6 +54,9 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     critic_epochs: int = 5
     critic_minibatches: int = 4
     use_critic: bool = True
+    remat_imagination: bool = True
+    """Recompute each imagined step in the backward pass (supermusclemimic's): the muscle geometry of every step
+    would otherwise stay in memory."""
     critic_target_alpha: float = 0.0
     """Target critic for the policy's bootstrap and the lambda-return targets, V' <- alpha V' + (1 - alpha) V
     after each critic update (as in SHAC). 0 uses the online critic, as SuperMimic does."""

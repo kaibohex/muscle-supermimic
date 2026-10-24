@@ -10,14 +10,16 @@ import torch
 
 
 class ReplayBuffer:
-    def __init__(self, T: int, N: int, body_dim: int, num_muscles: int, device: str):
+    def __init__(self, T: int, N: int, body_dim: int, num_muscles: int, num_touch: int, device: str):
         self.T, self.N, self.device = T, N, device
         f16 = torch.float16
         self.fields = {
             "s": ((body_dim,), torch.float32),  # body state before the step
             "act": ((num_muscles,), f16),  # muscle activations before the step
+            "touch": ((num_touch,), torch.float32),  # foot touch before the step
             "a": ((num_muscles,), f16),  # excitation applied during the step
             "s1": ((body_dim,), torch.float32),  # body state after the step (activations follow analytically)
+            "touch1": ((num_touch,), torch.float32),  # foot touch after the step
             "r": ((), torch.float32),
             "f": ((), torch.long),
             "ep_step": ((), torch.int32),
@@ -55,7 +57,7 @@ class ReplayBuffer:
         t0 = torch.randint(0, self.size - k + 1, (B,), device=self.device)
         env = torch.randint(0, self.N, (B,), device=self.device)
         ages = t0.unsqueeze(-1) + torch.arange(k, device=self.device)
-        out = self._get(ages, env.unsqueeze(-1).expand_as(ages), ("s", "act", "a", "s1", "done"))
+        out = self._get(ages, env.unsqueeze(-1).expand_as(ages), ("s", "act", "a", "s1", "touch1", "done"))
         # transition j is valid if no episode ended at transitions 0..j-1
         d = out["done"].float()
         out["mask"] = torch.cumprod(torch.cat((torch.ones(B, 1, device=self.device), 1 - d[:, :-1]), -1), -1)
@@ -63,9 +65,9 @@ class ReplayBuffer:
 
     def sample_starts(self, B: int, hist: int):
         """Start points for imagination plus their observation history (oldest first, clamped to the episode)."""
-        age = torch.randint(hist, self.size, (B,), device=self.device)
+        age = torch.randint(max(hist, 1), self.size, (B,), device=self.device)  # row 0 has no previous action
         env = torch.randint(0, self.N, (B,), device=self.device)
-        keys = ("s", "act", "f", "ep_step")
+        keys = ("s", "act", "touch", "f", "ep_step")
         start = self._get(age, env, keys)
         start["last_a"] = self._last_action(age, env)
         back = torch.arange(hist - 1, -1, -1, device=self.device)  # hist-1 ... 0
