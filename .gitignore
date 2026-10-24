@@ -1,0 +1,13 @@
+# python / tooling
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+# motion data (fetched / converted locally) and training runs
+data/
+logs/
+*.pt
+*.npz
+*.mp4

@@ -1,0 +1,34 @@
+[project]
+name = "muscle-supermimic"
+version = "0.1.0"
+description = "SuperMimic (world-model BPTT motion tracking) for the MS-Human-700 whole-body musculoskeletal model, on mjlab / MuJoCo-Warp."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "mjlab==1.6.0",
+]
+
+[project.scripts]
+ms-convert-motion = "muscle_supermimic.tasks.tracking.scripts.convert_motion:main"
+ms-eval = "muscle_supermimic.tasks.tracking.scripts.evaluate:main"
+ms-render = "muscle_supermimic.tasks.tracking.scripts.render:main"
+
+# mjlab imports every package of this entry-point group on `import mjlab`, so mjlab's `train` / `play`
+# CLIs list the tasks registered in muscle_supermimic.tasks.
+[project.entry-points."mjlab.tasks"]
+muscle_supermimic = "muscle_supermimic.tasks"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 130
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
