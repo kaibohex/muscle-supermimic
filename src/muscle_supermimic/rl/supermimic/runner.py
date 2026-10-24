@@ -281,8 +281,8 @@ class SuperMimicRunner:
             obs = self.obs
             self.pi.obs_norm.update(obs["policy"])
             self.pi.goal_norm.update(obs["goal"])
-            logits = self.pi.logits(obs["policy"], obs["goal"])
-            a = torch.sigmoid(logits + self.cfg.action_noise * torch.randn_like(logits))
+            a = self.pi(obs["policy"], obs["goal"])
+            a = (a + self.cfg.action_noise * torch.randn_like(a)).clamp(0.0, 1.0)
             obs, rew, dones, _ = self.env.step(a)
             S1 = cmd.read_state()
             done = dones.bool()

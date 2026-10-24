@@ -25,7 +25,8 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     utd: float = 0.4
     """Updates per vectorized simulator step (2.5 sim steps per iteration)."""
     action_noise: float = 0.1
-    """Exploration noise N(0, sigma^2) added to the policy output (the excitation logits) during collection."""
+    """Exploration noise N(0, sigma^2) added to the action, i.e. the excitations, during collection, then clipped to
+    [0, 1] (as supermusclemimic does). Noise on the logits would shrink to sigma * e(1 - e) at low excitations."""
     warmup_steps: int = 64
     """Simulator steps before any update."""
 
