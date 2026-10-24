@@ -54,6 +54,9 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     critic_epochs: int = 5
     critic_minibatches: int = 4
     use_critic: bool = True
+    remat_imagination: bool = True
+    """Recompute each imagined step in the backward pass (supermusclemimic's): the muscle geometry of every step
+    would otherwise stay in memory."""
     critic_target_alpha: float = 0.0
     """Target critic for the policy's bootstrap and the lambda-return targets, V' <- alpha V' + (1 - alpha) V
     after each critic update (as in SHAC). 0 uses the online critic, as SuperMimic does."""

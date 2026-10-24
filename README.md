@@ -155,7 +155,7 @@ curves (`mdp/muscle_geometry.py`, equal to MuJoCo's `actuator_length / velocity 
 * **Critic** MLP(256,128) on the decoder observation, the goal and privileged reference errors (root
   position in the heading frame, heading error, joint position and velocity errors), GAE(λ=0.95)
   targets, 5 epochs x 4 minibatches. BPTT over H=32 imagined steps (0.32 s) with soft survival and
-  critic bootstrap; Adam 2e-4 (policy β=(0.9,0.95)), cosine
+  critic bootstrap, each step recomputed in the backward pass; Adam 2e-4 (policy β=(0.9,0.95)), cosine
   decay to 0.03x over 250k iterations, grad clip 1.0 (+0.1 element-wise for the policy), γ=0.99, 500
   world-model-only iterations, bf16 MLPs, 4096 envs, imagination batch 4096.
 * **Evaluation**: App. F.1 as in supermimic_vibed.

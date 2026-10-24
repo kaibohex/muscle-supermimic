@@ -21,6 +21,7 @@ from dataclasses import asdict, fields
 
 import torch
 import torch.nn as nn
+import torch.utils.checkpoint
 from tensordict import TensorDict
 
 from muscle_supermimic.rl.supermimic import networks
@@ -219,9 +220,12 @@ class SuperMimicRunner:
         set_requires_grad(self.critic, False)
         S0, f0, a0 = S, f, a_last
         Ss, As, Aps, Fs = [], [], [], []
+        step = self.imag_step
+        if c.remat_imagination:  # recompute each step in the backward pass instead of keeping its activations
+            step = lambda *x: torch.utils.checkpoint.checkpoint(self.imag_step, *x, use_reentrant=False)  # noqa: E731
         for _ in range(HZ):
             Aps.append(a_last)
-            S, a_last, hist, f = self.imag_step(S, hist, f, a_last)
+            S, a_last, hist, f = step(S, hist, f, a_last)
             Ss.append(S), As.append(a_last), Fs.append(f)
         flat = lambda xs: torch.stack(xs).flatten(0, 1)  # noqa: E731  (H*B, ...)
         S_all = tuple(flat([St[i] for St in Ss]) for i in range(len(S0)))
@@ -249,10 +253,9 @@ class SuperMimicRunner:
         v_loss = torch.zeros((), device=dev)
         if c.use_critic:
             with torch.no_grad():
-                S_c = tuple(torch.cat((S0[i].unsqueeze(0), torch.stack([St[i].detach() for St in Ss])), 0).flatten(0, 1) for i in range(len(S0)))
-                f_c = torch.cat((f0.unsqueeze(0), torch.stack(Fs)), 0).flatten()
-                a_c = torch.cat((a0.unsqueeze(0), torch.stack(As).detach()), 0).flatten(0, 1)
-                X = self.critic_input(S_c, f_c, a_c).view(HZ + 1, B, -1)
+                # one imagined step at a time: the muscle geometry of all (H+1) x B states at once is large
+                X = torch.stack([self.critic_input(tuple(x.detach() for x in St), ft, at.detach())
+                                 for St, ft, at in zip([S0, *Ss], [f0, *Fs], [a0, *As], strict=True)])  # fmt: skip
             self.critic.norm.update(X)
             with torch.no_grad():
                 V = self.value(X)
