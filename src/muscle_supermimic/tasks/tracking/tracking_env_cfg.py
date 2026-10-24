@@ -119,7 +119,7 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
             mujoco=MujocoCfg(timestep=TIMESTEP, iterations=10, ls_iterations=20),
         ),
         decimation=DECIMATION,  # 100 Hz control, as MyoFullBody
-        episode_length_s=10.0,
+        episode_length_s=300.0,  # MuscleMimic's horizon (30000 steps): episodes end at the clip's last frame
         # the SuperMimic runner resets done envs itself, after it has recorded their terminal state
         auto_reset=False,
     )
