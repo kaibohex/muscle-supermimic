@@ -113,6 +113,10 @@ class TrackingHeads:
     def goal(self, ctx: StepCtx) -> torch.Tensor:
         return self.motion.goal(ctx.f, self.K)
 
+    def muscle_act(self, ctx: StepCtx) -> torch.Tensor:
+        """Muscle activations, the plant state a rigid robot does not have (MuscleMimic observes it too)."""
+        return ctx.S[6]
+
     # ---------------- critic ----------------
     def critic_features(self, ctx: StepCtx) -> torch.Tensor:
         """Critic input: invariant state (incl. muscle activations) and robot-vs-reference errors."""

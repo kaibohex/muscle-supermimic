@@ -5,6 +5,9 @@ supermimic_vibed (github.com/zita-ch/supermimic_vibed) on mjlab terms: BeyondMim
 without the self-collision term, joint-limit weight -2, termination |e_z| > 0.25 m or e_tilt > 0.8,
 proprioception with a 10-frame history and K = 10 future reference frames as the goal.
 
+A muscle-specific addition, taken from MuscleMimic (where SuperMimic trains stably on a muscle
+model): the policy also observes the current muscle activations.
+
 No randomization of any kind: no domain randomization events, no observation noise, no reset noise.
 Robot-specific settings are in ``config/``.
 """
@@ -33,18 +36,21 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
     ##
 
     # supermimic: o_t = (q - q0, qd, IMU w, projected gravity, a_{t-1}, ref root ori), o_{t-9:t} to the decoder
+    hist = {"params": CMD, "history_length": 10}
     proprio_terms = {
-        "joint_pos": ObservationTermCfg(func=mdp.joint_pos, params=CMD),
-        "joint_vel": ObservationTermCfg(func=mdp.joint_vel, params=CMD),
-        "root_ang_vel_b": ObservationTermCfg(func=mdp.root_ang_vel_b, params=CMD),
-        "projected_gravity": ObservationTermCfg(func=mdp.projected_gravity, params=CMD),
-        "last_action": ObservationTermCfg(func=mdp.last_action, params=CMD),
-        "motion_ref_ori_b": ObservationTermCfg(func=mdp.motion_ref_ori_b, params=CMD),
+        "joint_pos": ObservationTermCfg(func=mdp.joint_pos, **hist),
+        "joint_vel": ObservationTermCfg(func=mdp.joint_vel, **hist),
+        "root_ang_vel_b": ObservationTermCfg(func=mdp.root_ang_vel_b, **hist),
+        "projected_gravity": ObservationTermCfg(func=mdp.projected_gravity, **hist),
+        "last_action": ObservationTermCfg(func=mdp.last_action, **hist),
+        "motion_ref_ori_b": ObservationTermCfg(func=mdp.motion_ref_ori_b, **hist),
+        # muscle-specific: the current activations (as MuscleMimic observes), no history
+        "muscle_act": ObservationTermCfg(func=mdp.muscle_act, params=CMD),
     }
     # supermimic: g_t = K future reference frames, to the motion encoder
     goal_terms = {"motion_goal": ObservationTermCfg(func=mdp.motion_goal, params=CMD)}
     observations = {
-        "policy": ObservationGroupCfg(terms=proprio_terms, concatenate_terms=True, enable_corruption=False, history_length=10),
+        "policy": ObservationGroupCfg(terms=proprio_terms, concatenate_terms=True, enable_corruption=False),
         "goal": ObservationGroupCfg(terms=goal_terms, concatenate_terms=True, enable_corruption=False),
     }
 

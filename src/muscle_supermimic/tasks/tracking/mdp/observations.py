@@ -1,5 +1,6 @@
 """Observation terms. SuperMimic's proprioception (q - q0, qd, IMU angular velocity, projected gravity,
-a_{t-1}, reference root orientation relative to the robot) and its goal (K future reference frames)."""
+a_{t-1}, reference root orientation relative to the robot) plus the muscle activations, and its goal
+(K future reference frames)."""
 
 from __future__ import annotations
 
@@ -52,6 +53,11 @@ def last_action(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
 @analytic(TrackingHeads.motion_ref_ori_b)
 def motion_ref_ori_b(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
     return TrackingHeads.motion_ref_ori_b(*_ctx(env, command_name))
+
+
+@analytic(TrackingHeads.muscle_act)
+def muscle_act(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
+    return TrackingHeads.muscle_act(*_ctx(env, command_name))
 
 
 @analytic(TrackingHeads.goal)
