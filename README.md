@@ -182,8 +182,10 @@ toes x2, thoracic12, head_neck, humerus, ulna, hand x2).
 
 Muscle length, velocity and force on imagined states come from a torch replica of MuJoCo's spatial
 tendons (site-site segments, sphere / cylinder wraps with side sites and inside wraps) and Hill muscle
-curves (`mdp/muscle_geometry.py`, equal to MuJoCo's `actuator_length / velocity / force` to 1e-9 /
-1e-8 / 1e-6). Foot touch, which depends on contacts, is predicted by an extra world-model head.
+curves, the passive part on `biasprm` (`mdp/muscle_geometry.py`, equal to MuJoCo's `actuator_length /
+velocity / force` to 1e-9 / 1e-8 / 1e-6; where a straight segment grazes a wrap surface, the wrap switches
+on or off and MuJoCo, MuJoCo-Warp and the replica differ by microns). Foot touch, which depends on
+contacts, is predicted by an extra world-model head.
 
 ## Algorithm (supermimic_vibed, as supermusclemimic adapts it to muscles)
 

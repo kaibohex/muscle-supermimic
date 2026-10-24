@@ -154,7 +154,7 @@ class MuscleGeometry:
 
     def __init__(self, m: mujoco.MjModel, device: str, dtype: torch.dtype = torch.float32):
         assert (m.actuator_trntype == mujoco.mjtTrn.mjTRN_TENDON).all() and (m.actuator_gear[:, 0] == 1).all()
-        assert not m.actuator_forcelimited.any() and (m.actuator_gainprm[:, 2] > 0).all()
+        assert not m.actuator_forcelimited.any() and (m.actuator_gainprm[:, 2] > 0).all() and (m.actuator_biasprm[:, 2] > 0).all()
         S, SPH, CYL = mujoco.mjtWrap.mjWRAP_SITE, mujoco.mjtWrap.mjWRAP_SPHERE, mujoco.mjtWrap.mjWRAP_CYLINDER
         pairs, triples, sites, geoms = [], [], {}, {}
         for col in range(m.nu):
@@ -196,7 +196,11 @@ class MuscleGeometry:
         g = m.actuator_gainprm
         self.range0, self.range1, self.F0 = t(g[:, 0], dtype=dtype), t(g[:, 1], dtype=dtype), t(g[:, 2], dtype=dtype)
         self.lmin, self.lmax, self.vmax = t(g[:, 4], dtype=dtype), t(g[:, 5], dtype=dtype), t(g[:, 6], dtype=dtype)
-        self.fpmax, self.fvmax = t(g[:, 7], dtype=dtype), t(g[:, 8], dtype=dtype)
+        self.fvmax = t(g[:, 8], dtype=dtype)
+        # the passive force reads biasprm (same layout), which MyoFullBody's supraspinatus sets apart from gainprm
+        b = m.actuator_biasprm
+        self.b_range0, self.b_range1, self.b_F0 = t(b[:, 0], dtype=dtype), t(b[:, 1], dtype=dtype), t(b[:, 2], dtype=dtype)
+        self.b_lmax, self.b_fpmax = t(b[:, 5], dtype=dtype), t(b[:, 7], dtype=dtype)
         self.lr0, self.lr1 = t(m.actuator_lengthrange[:, 0], dtype=dtype), t(m.actuator_lengthrange[:, 1], dtype=dtype)
 
     def length_velocity(self, q: torch.Tensor, qd: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -289,7 +293,8 @@ class MuscleGeometry:
         return wl, w0, w1
 
     def force(self, L: torch.Tensor, Ld: torch.Tensor, act: torch.Tensor) -> torch.Tensor:
-        """Actuator force gain(L, V) act + bias(L) (MuJoCo's muscle_gain / muscle_bias; negative = pulling)."""
+        """Actuator force gain(L, V) act + bias(L) (MuJoCo's muscle_gain on gainprm / muscle_bias on biasprm;
+        negative = pulling)."""
         L0 = (self.lr1 - self.lr0) / (self.range1 - self.range0).clamp(min=MINVAL)
         Ln = self.range0 + (L - self.lr0) / L0.clamp(min=MINVAL)
         Vn = Ld / (L0 * self.vmax).clamp(min=MINVAL)
@@ -298,7 +303,10 @@ class MuscleGeometry:
         FV = torch.where(Vn <= -1, torch.zeros_like(Vn),
                          torch.where(Vn <= 0, (Vn + 1) ** 2,
                                      torch.where(Vn <= y, self.fvmax - (y - Vn) ** 2 / y.clamp(min=MINVAL), self.fvmax)))  # fmt: skip
-        b = 0.5 * (1 + self.lmax)
-        xb = (Ln - 1) / (b - 1).clamp(min=MINVAL)
-        FP = torch.where(Ln <= 1, torch.zeros_like(Ln), torch.where(Ln <= b, 0.5 * xb * xb, 0.5 + (Ln - b) / (b - 1).clamp(min=MINVAL)))
-        return -self.F0 * (FL * FV * act + self.fpmax * FP)
+        L0b = (self.lr1 - self.lr0) / (self.b_range1 - self.b_range0).clamp(min=MINVAL)
+        Lnb = self.b_range0 + (L - self.lr0) / L0b.clamp(min=MINVAL)
+        b = 0.5 * (1 + self.b_lmax)
+        xb = (Lnb - 1) / (b - 1).clamp(min=MINVAL)
+        FP = torch.where(Lnb <= 1, torch.zeros_like(Lnb),
+                         torch.where(Lnb <= b, 0.5 * xb * xb, 0.5 + (Lnb - b) / (b - 1).clamp(min=MINVAL)))  # fmt: skip
+        return -self.F0 * FL * FV * act - self.b_F0 * self.b_fpmax * FP
