@@ -51,6 +51,12 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     critic_epochs: int = 5
     critic_minibatches: int = 4
     use_critic: bool = True
+    critic_target_alpha: float = 0.0
+    """Target critic for the policy's bootstrap and the lambda-return targets, V' <- alpha V' + (1 - alpha) V
+    after each critic update (as in SHAC). 0 uses the online critic, as SuperMimic does."""
+    value_clip: bool = False
+    """Clamp bootstrapped values to the largest attainable return, max step reward / (1 - gamma), so the policy
+    cannot exploit critic overestimation beyond it. Off in SuperMimic."""
 
     # optimization
     lr: float = 2e-4

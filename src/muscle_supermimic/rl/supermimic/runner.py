@@ -12,6 +12,7 @@ state with the learned world model, whose action input is the substep-mean activ
 
 from __future__ import annotations
 
+import copy
 import csv
 import math
 import os
@@ -115,6 +116,10 @@ class SuperMimicRunner:
         self.pi = Policy(self.obs_policy.dim, self.obs_goal.dim, self.nm, c.enc_hidden, c.dec_hidden, c.latent_dim,
                          c.init_excitation).to(dev)  # fmt: skip
         self.critic = Critic(self.heads.critic_dim(self.nm) + self.obs_goal.dim, c.critic_hidden).to(dev)
+        self.critic_targ = self.critic
+        if c.critic_target_alpha > 0:
+            self.critic_targ = copy.deepcopy(self.critic).requires_grad_(False)
+            self.critic_targ.norm = self.critic.norm  # one input normalizer, updated with the online critic
         self.opt_wm = torch.optim.Adam(self.wm.parameters(), lr=c.lr)
         self.opt_pi = torch.optim.Adam(self.pi.parameters(), lr=c.lr, betas=(0.9, 0.95))
         self.opt_v = torch.optim.Adam(self.critic.parameters(), lr=c.lr)
@@ -154,6 +159,17 @@ class SuperMimicRunner:
     def _critic_input(self, S, f):
         ctx = StepCtx(S, f)
         return torch.cat((self.heads.critic_features(ctx), self.obs_goal.assemble(None, ctx)), -1)
+
+    def value(self, x):
+        """Bootstrap value: the target critic, optionally clamped to the attainable maximum."""
+        v = self.critic_targ(x)
+        return v.clamp(max=self.max_step_reward / (1 - self.cfg.gamma)) if self.cfg.value_clip else v
+
+    @torch.no_grad()
+    def update_critic_targ(self):
+        if self.critic_targ is not self.critic:
+            for pt, p in zip(self.critic_targ.parameters(), self.critic.parameters(), strict=True):
+                pt.lerp_(p, 1 - self.cfg.critic_target_alpha)
 
     def lr_at(self, it: int) -> float:
         c = self.cfg
@@ -213,7 +229,7 @@ class SuperMimicRunner:
         r_sum = (c_t * r).detach().sum(0)
         rews, dones = r.detach(), d.detach()
         if c.use_critic:
-            J = J + (c.gamma**HZ) * surv * self.critic(self.critic_input(S, f))
+            J = J + (c.gamma**HZ) * surv * self.value(self.critic_input(S, f))
         loss = -J.mean()
         self.opt_pi.zero_grad(set_to_none=True)
         loss.backward()
@@ -232,7 +248,7 @@ class SuperMimicRunner:
                 X = self.critic_input(S_c, f_c).view(HZ + 1, B, -1)
             self.critic.norm.update(X)
             with torch.no_grad():
-                V = self.critic(X)
+                V = self.value(X)
                 R = V[-1]
                 targets = []
                 for t in range(HZ - 1, -1, -1):
@@ -251,6 +267,7 @@ class SuperMimicRunner:
                     v_loss.backward()
                     nn.utils.clip_grad_norm_(self.critic.parameters(), c.grad_clip)
                     self.opt_v.step()
+            self.update_critic_targ()
         return loss.detach(), v_loss.detach(), (r_sum / HZ / self.max_step_reward).mean(), gn.detach(), surv.mean().detach()
 
     # ------------------------------------------------------------------ simulator
@@ -351,6 +368,8 @@ class SuperMimicRunner:
               "opt_wm": self.opt_wm.state_dict(), "opt_pi": self.opt_pi.state_dict(), "opt_v": self.opt_v.state_dict(),
               "iteration": self.it, "wall_time": self.wall_offset, "sim_steps": self.sim_steps, "cfg": asdict(self.cfg),
               "saved_at": time.strftime("%Y-%m-%d %H:%M:%S")}  # fmt: skip
+        if self.critic_targ is not self.critic:
+            ck["critic_targ"] = self.critic_targ.state_dict()
         torch.save(ck, path + ".tmp")
         os.replace(path + ".tmp", path)
 
@@ -365,6 +384,8 @@ class SuperMimicRunner:
         if load_cfg is None or not set(load_cfg) <= {"actor"}:
             self.wm.load_state_dict(ck["wm"], strict=strict)
             self.critic.load_state_dict(ck["critic"], strict=strict)
+            if self.critic_targ is not self.critic:
+                self.critic_targ.load_state_dict(ck.get("critic_targ", ck["critic"]), strict=strict)
             for k in ("opt_wm", "opt_pi", "opt_v"):
                 getattr(self, k).load_state_dict(ck[k])
             self.it, self.wall_offset, self.sim_steps = ck["iteration"], ck["wall_time"], ck["sim_steps"]

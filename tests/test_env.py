@@ -101,3 +101,21 @@ def test_runner_learns_and_round_trips(setup, tmp_path):
     policy = runner.get_inference_policy()
     a = policy(env.get_observations())
     assert a.shape == (2, runner.nm) and torch.isfinite(a).all() and (a >= 0).all() and (a <= 1).all()
+
+
+def test_target_critic_and_value_clip(setup, tmp_path):
+    env, runner = setup
+    runner.cfg.critic_target_alpha, runner.cfg.value_clip = 0.9, True
+    runner._build_networks()
+    assert runner.critic_targ is not runner.critic and runner.critic_targ.norm is runner.critic.norm
+    runner.log_dir = str(tmp_path)
+    runner.learn(num_learning_iterations=4)
+    online, targ = runner.critic.state_dict(), runner.critic_targ.state_dict()
+    assert any(not torch.equal(online[k], targ[k]) for k in online)  # the target lags
+    x = 1e3 * torch.randn(16, runner.critic.norm.mean.shape[0])
+    assert (runner.value(x) <= runner.max_step_reward / (1 - runner.cfg.gamma) + 1e-6).all()
+    ck = os.path.join(tmp_path, f"model_{runner.it:06d}.pt")
+    runner.critic_targ.load_state_dict(online)
+    runner.load(ck)
+    for k, v in runner.critic_targ.state_dict().items():
+        torch.testing.assert_close(v, targ[k])
