@@ -83,7 +83,7 @@ def evaluate(env, runner, record: str | None = None) -> dict:
         ref_quat = mat_to_quat(m.root_R @ cmd.kin.R_off.T)
         np.savez_compressed(record, names=np.array(m.names), **{k: torch.stack(v).numpy() for k, v in traj.items()},
                             ref_qpos=torch.cat((m.root_p, ref_quat, ref_q), -1).cpu().numpy(),
-                            clip_start=m.clip_start.cpu().numpy(), clip_len=m.clip_len.cpu().numpy())  # fmt: skip
+                            clip_start=m.clip_start.cpu().numpy(), clip_len=m.clip_len.cpu().numpy(), fps=1.0 / u.step_dt)  # fmt: skip
     return res
 
 

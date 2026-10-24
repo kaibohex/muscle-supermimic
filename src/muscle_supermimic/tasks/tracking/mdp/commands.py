@@ -25,6 +25,7 @@ from .heads import StepCtx, TrackingHeads
 from .kinematics import MSHumanKinematics
 from .motion import MotionLib
 from .muscle import MuscleActivation
+from .muscle_geometry import MuscleGeometry
 
 if TYPE_CHECKING:
     from mjlab.entity import Entity
@@ -49,8 +50,9 @@ class MotionCommand(CommandTerm):
         bin_frames = max(1, round(cfg.bin_seconds / env.step_dt))
         self.motion = MotionLib.from_path(cfg.motion_file, self.kin, env.step_dt, dev, bin_frames=bin_frames)
         self.muscle = MuscleActivation(m, env.cfg.decimation, env.physics_dt, dev)
-        self.K = cfg.future_frames
-        self.heads = TrackingHeads(self.kin, self.motion, torch.zeros(self.kin.num_q, device=dev), self.K)
+        self.geo = MuscleGeometry(m, dev)
+        self.heads = TrackingHeads(self.kin, self.motion, self.geo, cfg.lookahead, cfg.stride)
+        self.touch_sensor = env.scene[cfg.touch_sensor_name]
 
         # simulator addresses (global, from the scene's model)
         idx = self.robot.indexing
@@ -78,16 +80,20 @@ class MotionCommand(CommandTerm):
     # ------------------------------------------------------------------ state
     @property
     def command(self) -> torch.Tensor:
-        return self.motion.goal(self.f, self.K)
+        return self.heads.goal(StepCtx((), self.f))
 
     def read_state(self):
-        """(p, R, v, w, q, qd, act) straight from qpos/qvel/act (no derived quantities, so never stale)."""
+        """(p, R, v, w, q, qd, act, touch) straight from qpos/qvel/act and the foot contact sensor (no derived
+        quantities, so never stale). Touch is the normal force of the ground on each foot body, which on flat
+        ground is what a MuJoCo touch sensor around the foot reads."""
         d = self._env.sim.data
         root_q, root_v = d.qpos[:, self._free_q], d.qvel[:, self._free_v]
         Rb = quat_to_mat(root_q[:, 3:7])
         p = root_q[:, :3] - self._env.scene.env_origins
         w = (Rb @ root_v[:, 3:6].unsqueeze(-1)).squeeze(-1)  # free joint: angular velocity is body-local
-        return (p, Rb @ self.kin.R_off, root_v[:, :3], w, d.qpos[:, self._q_adr], d.qvel[:, self._v_adr], d.act[:, self._act_adr])
+        touch = self.touch_sensor.data.force[..., 2].abs().reshape(self.num_envs, -1)
+        return (p, Rb @ self.kin.R_off, root_v[:, :3], w, d.qpos[:, self._q_adr], d.qvel[:, self._v_adr], d.act[:, self._act_adr],
+                touch)  # fmt: skip
 
     def obs_ctx(self) -> StepCtx:
         am = self._env.action_manager
@@ -192,8 +198,12 @@ class MotionCommandCfg(MjlabMotionCommandCfg):
     joint_position_range: tuple[float, float] = (0.0, 0.0)
     sampling_mode: Literal["return", "uniform", "start"] = "return"
     """Reset frames: SuperMimic's return-based bins, uniform bins, or each env at the start of clip env_id % C."""
-    future_frames: int = 10
-    """K future reference frames in the goal."""
+    lookahead: int = 5
+    """Reference frames in the goal (MuscleMimic's n_step_lookahead), the current one included."""
+    stride: int = 20
+    """Control steps between them (MuscleMimic's n_step_stride: 0.2 s at 100 Hz)."""
+    touch_sensor_name: str = "foot_touch"
+    """Scene contact sensor of the four foot bodies against the terrain (net force per body)."""
     gamma: float = 0.99
     bin_seconds: float = 1.0
     init_activation: float = 0.0

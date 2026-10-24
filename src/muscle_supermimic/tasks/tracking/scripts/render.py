@@ -126,6 +126,7 @@ def main():
     if "ref_qpos" not in d.files:
         return replay_motion(args.input, args.out_dir, args.lock_hands, args.seconds, args.width, args.height)
     qpos, f, alive, ref = d["qpos"], d["f"], d["alive"], d["ref_qpos"]
+    fps = float(d["fps"]) if "fps" in d.files else 50.0  # control rate of the rollout
     nq = qpos.shape[-1]
     lock_hands = next(lh for lh in (False, True) if compiled_model(lock_hands=lh).nq == nq)
     m = build_scene(lock_hands)
@@ -135,12 +136,12 @@ def main():
             continue
         steps = np.nonzero(alive[:, c])[0]
         if args.seconds:
-            steps = steps[: int(args.seconds * 50)]
+            steps = steps[: int(args.seconds * fps)]
         frames, _ = render(m, np.concatenate((qpos[steps, c], ref[f[steps, c]]), -1), args.width, args.height)
         out = os.path.join(args.out_dir, f"{name}.mp4")
-        mediapy.write_video(out, frames, fps=50)
+        mediapy.write_video(out, frames, fps=fps)
         fell = len(steps) < (d["clip_len"][c] - 1) and not args.seconds
-        print(f"{out}: {len(frames)} frames ({len(frames) / 50:.1f} s){' -- fell' if fell else ''}")
+        print(f"{out}: {len(frames)} frames ({len(frames) / fps:.1f} s){' -- fell' if fell else ''}")
 
 
 if __name__ == "__main__":

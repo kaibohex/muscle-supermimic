@@ -1,5 +1,6 @@
-"""Reward terms: SuperMimic's BeyondMimic tracking reward (without the self-collision term), action rate
-and joint-limit penalties. Each compares the post-step state with reference frame f + 1."""
+"""Reward terms: MuscleMimic's MimicReward, one term per component (exp(-w_exp * mean squared error)), each
+comparing the post-step state with reference frame f + 1. Its penalties are all off in MuscleMimic's
+full-body configuration, so there are none."""
 
 from __future__ import annotations
 
@@ -21,41 +22,41 @@ def _ctx(env: ManagerBasedRlEnv, command_name: str):
     return cmd.heads, cmd.transition_ctx()
 
 
-@analytic(H.root_pos_exp)
-def motion_root_pos_exp(env: ManagerBasedRlEnv, command_name: str, std: float) -> torch.Tensor:
-    return H.root_pos_exp(*_ctx(env, command_name), std=std)
+@analytic(H.mimic_qpos)
+def mimic_qpos(env: ManagerBasedRlEnv, command_name: str, w_exp: float) -> torch.Tensor:
+    return H.mimic_qpos(*_ctx(env, command_name), w_exp=w_exp)
 
 
-@analytic(H.root_ori_exp)
-def motion_root_ori_exp(env: ManagerBasedRlEnv, command_name: str, std: float) -> torch.Tensor:
-    return H.root_ori_exp(*_ctx(env, command_name), std=std)
+@analytic(H.mimic_qvel)
+def mimic_qvel(env: ManagerBasedRlEnv, command_name: str, w_exp: float) -> torch.Tensor:
+    return H.mimic_qvel(*_ctx(env, command_name), w_exp=w_exp)
 
 
-@analytic(H.body_pos_exp)
-def motion_body_pos_exp(env: ManagerBasedRlEnv, command_name: str, std: float) -> torch.Tensor:
-    return H.body_pos_exp(*_ctx(env, command_name), std=std)
+@analytic(H.mimic_root_pos)
+def mimic_root_pos(env: ManagerBasedRlEnv, command_name: str, w_exp: float) -> torch.Tensor:
+    return H.mimic_root_pos(*_ctx(env, command_name), w_exp=w_exp)
 
 
-@analytic(H.body_ori_exp)
-def motion_body_ori_exp(env: ManagerBasedRlEnv, command_name: str, std: float) -> torch.Tensor:
-    return H.body_ori_exp(*_ctx(env, command_name), std=std)
+@analytic(H.mimic_root_vel)
+def mimic_root_vel(env: ManagerBasedRlEnv, command_name: str, w_exp: float) -> torch.Tensor:
+    return H.mimic_root_vel(*_ctx(env, command_name), w_exp=w_exp)
 
 
-@analytic(H.body_lin_vel_exp)
-def motion_body_lin_vel_exp(env: ManagerBasedRlEnv, command_name: str, std: float) -> torch.Tensor:
-    return H.body_lin_vel_exp(*_ctx(env, command_name), std=std)
+@analytic(H.mimic_rpos)
+def mimic_rpos(env: ManagerBasedRlEnv, command_name: str, w_exp: float) -> torch.Tensor:
+    return H.mimic_rpos(*_ctx(env, command_name), w_exp=w_exp)
 
 
-@analytic(H.body_ang_vel_exp)
-def motion_body_ang_vel_exp(env: ManagerBasedRlEnv, command_name: str, std: float) -> torch.Tensor:
-    return H.body_ang_vel_exp(*_ctx(env, command_name), std=std)
+@analytic(H.mimic_rquat)
+def mimic_rquat(env: ManagerBasedRlEnv, command_name: str, w_exp: float) -> torch.Tensor:
+    return H.mimic_rquat(*_ctx(env, command_name), w_exp=w_exp)
 
 
-@analytic(H.action_rate_l2)
-def action_rate_l2(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
-    return H.action_rate_l2(*_ctx(env, command_name))
+@analytic(H.mimic_rvel_rot)
+def mimic_rvel_rot(env: ManagerBasedRlEnv, command_name: str, w_exp: float) -> torch.Tensor:
+    return H.mimic_rvel_rot(*_ctx(env, command_name), w_exp=w_exp)
 
 
-@analytic(H.joint_pos_limits)
-def joint_pos_limits(env: ManagerBasedRlEnv, command_name: str, soft_limit_factor: float) -> torch.Tensor:
-    return H.joint_pos_limits(*_ctx(env, command_name), soft_limit_factor=soft_limit_factor)
+@analytic(H.mimic_rvel_lin)
+def mimic_rvel_lin(env: ManagerBasedRlEnv, command_name: str, w_exp: float) -> torch.Tensor:
+    return H.mimic_rvel_lin(*_ctx(env, command_name), w_exp=w_exp)

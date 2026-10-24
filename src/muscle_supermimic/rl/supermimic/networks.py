@@ -70,21 +70,24 @@ def run_mlp(net: nn.Module, x: torch.Tensor) -> torch.Tensor:
 
 
 class WorldModel(nn.Module):
-    """Deterministic body dynamics S_{t+1} = f(S_t, act_mean_t) predicting frame-local state increments."""
+    """Deterministic body dynamics S_{t+1} = f(S_t, act_t, act_{t+1}) predicting frame-local state increments,
+    with an auxiliary head for the foot touch of S_{t+1} (as supermusclemimic: the activations before and after
+    the step are inputs, contacts are the only observation the analytic heads cannot compute)."""
 
-    def __init__(self, nq: int, num_muscles: int, hidden=(2048, 2048, 2048)):
+    def __init__(self, nq: int, num_muscles: int, num_touch: int, hidden=(2048, 2048, 2048)):
         super().__init__()
-        self.nq = nq
-        self.in_dim = 1 + 6 + 3 + 3 + 2 * nq + num_muscles
+        self.nq, self.num_touch = nq, num_touch
+        self.in_dim = 1 + 6 + 3 + 3 + 2 * nq + 2 * num_muscles
         self.out_dim = 3 + 3 + 3 + 3 + 2 * nq
-        self.net = mlp(self.in_dim, list(hidden), self.out_dim, act=nn.SiLU, layer_norm=True)
+        self.net = mlp(self.in_dim, list(hidden), self.out_dim + num_touch, act=nn.SiLU, layer_norm=True)
         nn.init.zeros_(self.net[-1].weight)
         nn.init.zeros_(self.net[-1].bias)
         self.in_norm = RunningNorm(self.in_dim)
         self.out_norm = RunningNorm(self.out_dim, eps=1e-4)
+        self.touch_norm = RunningNorm(num_touch)
 
-    def inputs(self, S, act_mean):
-        return torch.cat((invariant_features(S), act_mean), -1)
+    def inputs(self, S, act, act1):
+        return torch.cat((invariant_features(S), act, act1), -1)
 
     @staticmethod
     def targets(S, S1):
@@ -105,17 +108,22 @@ class WorldModel(nn.Module):
             -1,
         )
 
-    def step(self, S, act_mean):
+    def step(self, S, act, act1):
+        """-> (body state of S_{t+1}, its normalized touch prediction)."""
         p, R, v, w, q, qd = S[:6]
-        y = run_mlp(self.net, self.in_norm(self.inputs(S, act_mean)))
-        d = y * self.out_norm.std() + self.out_norm.mean
+        y = run_mlp(self.net, self.in_norm(self.inputs(S, act, act1)))
+        d = y[..., : self.out_dim] * self.out_norm.std() + self.out_norm.mean
         H = yaw_mat(R)
         dp, dth, dv, dw, dq, dqd = d.split((3, 3, 3, 3, self.nq, self.nq), -1)
         p1 = p + (H @ dp.unsqueeze(-1)).squeeze(-1)
         R1 = R @ so3_exp(dth)
         v1 = v + (R @ dv.unsqueeze(-1)).squeeze(-1)
         w1 = w + (R @ dw.unsqueeze(-1)).squeeze(-1)
-        return (p1, R1, v1, w1, q + dq, qd + dqd)
+        return (p1, R1, v1, w1, q + dq, qd + dqd), y[..., self.out_dim :]
+
+    def touch(self, touch_n: torch.Tensor) -> torch.Tensor:
+        """Normalized touch prediction -> touch (non-negative)."""
+        return torch.relu(touch_n * self.touch_norm.std() + self.touch_norm.mean)
 
     @staticmethod
     def state_error(S_hat, S):
@@ -124,13 +132,13 @@ class WorldModel(nn.Module):
 
 
 class Policy(nn.Module):
-    """e = sigmoid(dec(enc(g), o_{t-9:t})); deterministic, latent z in R^32 bounded by tanh.
+    """e = sigmoid(dec(enc(g), o_t)); deterministic, latent z in R^32 bounded by tanh.
 
     The decoder outputs excitation logits; the env action is the excitation in [0, 1].
     """
 
     def __init__(self, obs_dim: int, goal_dim: int, num_actions: int, enc_hidden=(2048, 1024, 512, 256),
-                 dec_hidden=(2048, 1024, 512, 256), z_dim: int = 32, init_excitation: float = 0.05):
+                 dec_hidden=(2048, 1024, 512, 256), z_dim: int = 32, init_excitation: float = 0.1):
         super().__init__()
         self.enc = mlp(goal_dim, list(enc_hidden), z_dim)
         self.dec = mlp(z_dim + obs_dim, list(dec_hidden), num_actions)
@@ -141,7 +149,7 @@ class Policy(nn.Module):
         self.goal_norm = RunningNorm(goal_dim)
 
     def logits(self, obs: torch.Tensor, goal: torch.Tensor) -> torch.Tensor:
-        """obs: (B, obs_dim) proprioception history (mjlab's flattened history group)."""
+        """obs: (B, obs_dim) the decoder observation; goal: (B, goal_dim) the encoder's reference-only goal."""
         z = torch.tanh(run_mlp(self.enc, self.goal_norm(goal)))
         return run_mlp(self.dec, torch.cat((z, self.obs_norm(obs)), -1))
 
