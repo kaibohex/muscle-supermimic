@@ -2,12 +2,13 @@
 
 Re-implements the MDP of SuperMimic (Liao et al., CoRL 2026, Appendix A) as reproduced by
 supermimic_vibed (github.com/zita-ch/supermimic_vibed) on mjlab terms: BeyondMimic tracking reward
-without the self-collision term, joint-limit weight -2, termination |e_z| > 0.25 m or e_tilt > 0.8,
-proprioception with a 10-frame history and K = 10 future reference frames as the goal.
+without the self-collision term, termination |e_z| > 0.25 m or e_tilt > 0.8, proprioception with a
+10-frame history and K = 10 future reference frames as the goal.
 
-Two muscle-specific additions, taken from MuscleMimic (where SuperMimic trains stably on a muscle
-model): the policy also observes the current muscle activations, and episodes also end on MuscleMimic's
-deviation checks (mean root-relative body position, root position and root orientation).
+Three muscle-specific changes, taken from MuscleMimic (where SuperMimic trains stably on a muscle
+model): the policy also observes the current muscle activations, episodes also end on MuscleMimic's
+deviation checks (mean root-relative body position, root position and root orientation), and the
+reward has no action-rate or joint-limit penalty.
 
 No randomization of any kind: no domain randomization events, no observation noise, no reset noise.
 Robot-specific settings are in ``config/``.
@@ -86,8 +87,9 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
         "motion_body_ori": RewardTermCfg(func=mdp.motion_body_ori_exp, weight=1.0, params={**CMD, "std": 0.4}),
         "motion_body_lin_vel": RewardTermCfg(func=mdp.motion_body_lin_vel_exp, weight=1.0, params={**CMD, "std": 1.0}),
         "motion_body_ang_vel": RewardTermCfg(func=mdp.motion_body_ang_vel_exp, weight=1.0, params={**CMD, "std": 3.14}),
-        "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.1, params=CMD),
-        "joint_limit": RewardTermCfg(func=mdp.joint_pos_limits, weight=-2.0, params={**CMD, "soft_limit_factor": 0.9}),
+        # supermimic's action-rate (-0.1) and joint-limit (-2) penalties are dropped, as MuscleMimic does: summed over
+        # ~620 muscles and the joints a collapsing body pins at their limits, they matched the tracking reward and
+        # drove the net step reward to zero or below, so staying alive was worth nothing
     }
 
     ##
