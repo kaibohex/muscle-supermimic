@@ -5,9 +5,10 @@ import numpy as np
 import pytest
 import torch
 
-from muscle_supermimic.assets.robots import mshuman700
+from muscle_supermimic.assets.robots import mshuman700, myofullbody
 from muscle_supermimic.assets.robots.model_info import ModelInfo
 from muscle_supermimic.tasks.tracking.config.mshuman700.env_cfgs import TRACKED_BODIES as MSHUMAN700_TRACKED
+from muscle_supermimic.tasks.tracking.config.myofullbody.env_cfgs import TRACKED_BODIES as MYOFULLBODY_TRACKED
 from muscle_supermimic.tasks.tracking.mdp.kinematics import SkeletonKinematics
 from muscle_supermimic.utils.rotations import so3_exp
 
@@ -15,6 +16,8 @@ from muscle_supermimic.utils.rotations import so3_exp
 MODELS = {
     "mshuman700": (lambda: mshuman700.compiled_model(), MSHUMAN700_TRACKED),
     "mshuman700-locked-hands": (lambda: mshuman700.compiled_model(lock_hands=True), MSHUMAN700_TRACKED),
+    "myofullbody": (lambda: myofullbody.compiled_model(), MYOFULLBODY_TRACKED),
+    "myofullbody-fingers": (lambda: myofullbody.compiled_model(disable_fingers=False), MYOFULLBODY_TRACKED),
 }
 
 

@@ -1579,6 +1579,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "mjlab" },
+    { name = "musclemimic-models" },
 ]
 
 [package.dev-dependencies]
@@ -1587,10 +1588,25 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "mjlab", specifier = "==1.6.0" }]
+requires-dist = [
+    { name = "mjlab", specifier = "==1.6.0" },
+    { name = "musclemimic-models", specifier = "==1.0.6" },
+]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]
+
+[[package]]
+name = "musclemimic-models"
+version = "1.0.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "mujoco" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/46/4d/50053827b1d4321c35770de0410dc7e680b46323e12a204d32625681c2bc/musclemimic_models-1.0.6.tar.gz", hash = "sha256:84263ad81e2e2c104cc63cd3214a627f19910e4591a1a28a9c15eea6b82f52fb", size = 4870379, upload-time = "2026-09-11T15:30:29.449Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/bf/deaa309a8af26e759c6ff49340707279b1c814eb4fd2916fb0636bce3d7e/musclemimic_models-1.0.6-py3-none-any.whl", hash = "sha256:88b096fe072bd5d2cfcc88ec43ffef27a73bc5a54e6699d3bda0e92a76a03bea", size = 4876758, upload-time = "2026-09-11T15:30:27.677Z" },
+]
 
 [[package]]
 name = "networkx"

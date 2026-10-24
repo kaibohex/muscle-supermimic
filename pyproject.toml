@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "mjlab==1.6.0",
+    "musclemimic-models==1.0.6",
 ]
 
 [project.scripts]
