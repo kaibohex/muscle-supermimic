@@ -71,6 +71,8 @@ class TrackingHeads:
         self.body_state_dim = BODY_STATE_DIM_EXTRA + 2 * self.nq
         self.inv_dim = 1 + 6 + 3 + 3 + 2 * self.nq
         self.num_tracked = len(kin.tracked_idx)
+        # tracked bodies other than the root (kinematic body 0), for root-relative deviations
+        self.rel_tracked = torch.tensor([i for i, b in enumerate(kin.tracked_idx) if b != 0], device=kin.device)
 
     # ---------------- shared pieces (cached per ctx) ----------------
     def fk(self, ctx: StepCtx):
@@ -175,14 +177,42 @@ def joint_pos_limits(h: TrackingHeads, ctx: StepCtx, soft_limit_factor: float) -
     return (torch.relu(q - (mid + half)) + torch.relu((mid - half) - q)).sum(-1)
 
 
+def _exceeds(e: torch.Tensor, threshold: float, soft_width: float | None) -> torch.Tensor:
+    """Hard termination in the simulator; sigmoid-softened in imagination (``soft_width`` set)."""
+    return e > threshold if soft_width is None else torch.sigmoid((e - threshold) / soft_width)
+
+
+def _norm(x: torch.Tensor) -> torch.Tensor:
+    return (x**2).sum(-1).add(1e-12).sqrt()  # finite gradient at 0
+
+
 def bad_root_height(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_width: float | None = None) -> torch.Tensor:
     e_z = (h.motion.root_p[ctx.f][..., 2] - ctx.S[0][..., 2]).abs()
-    return e_z > threshold if soft_width is None else torch.sigmoid((e_z - threshold) / soft_width)
+    return _exceeds(e_z, threshold, soft_width)
 
 
 def bad_root_tilt(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_width: float | None = None) -> torch.Tensor:
     e_tilt = (h.motion.root_R[ctx.f][..., 2, 2] - ctx.S[1][..., 2, 2]).abs()
-    return e_tilt > threshold if soft_width is None else torch.sigmoid((e_tilt - threshold) / soft_width)
+    return _exceeds(e_tilt, threshold, soft_width)
+
+
+# MuscleMimic's MeanRelativeSiteDeviationWithRootTerminalStateHandler, on the tracked bodies
+def bad_body_pos_dev(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_width: float | None = None) -> torch.Tensor:
+    """Mean distance between robot and reference body positions relative to their roots (world frame)."""
+    m, f, i = h.motion, ctx.f, h.rel_tracked
+    rel = h.fk(ctx)[0][..., i, :] - ctx.S[0].unsqueeze(-2)
+    ref = m.body_p[f][..., i, :] - m.root_p[f].unsqueeze(-2)
+    return _exceeds(_norm(rel - ref).mean(-1), threshold, soft_width)
+
+
+def bad_root_pos_dev(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_width: float | None = None) -> torch.Tensor:
+    """Distance between robot and reference root positions (horizontal drift included)."""
+    return _exceeds(_norm(h.motion.root_p[ctx.f] - ctx.S[0]), threshold, soft_width)
+
+
+def bad_root_ori_dev(h: TrackingHeads, ctx: StepCtx, threshold: float, soft_width: float | None = None) -> torch.Tensor:
+    """Geodesic angle between robot and reference root orientations (heading included)."""
+    return _exceeds(rot_angle_sq(h.motion.root_R[ctx.f], ctx.S[1]).sqrt(), threshold, soft_width)
 
 
 def analytic(fn):

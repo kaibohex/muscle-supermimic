@@ -1,5 +1,7 @@
-"""Termination terms. Failure: |e_z| > 0.25 m or tilt error > 0.8 on the root (sigmoid-softened in
-imagination with ``soft_width``); time-outs: episode length and the clip's last frame (bootstrapped)."""
+"""Termination terms. Failure: SuperMimic's |e_z| > 0.25 m or tilt error > 0.8 on the root, and
+MuscleMimic's deviation checks (mean root-relative body position, root position, root orientation),
+all sigmoid-softened in imagination with ``soft_width``; time-outs: episode length and the clip's last
+frame (bootstrapped)."""
 
 from __future__ import annotations
 
@@ -31,6 +33,24 @@ def bad_root_height(env: ManagerBasedRlEnv, command_name: str, threshold: float,
 def bad_root_tilt(env: ManagerBasedRlEnv, command_name: str, threshold: float, soft_width: float) -> torch.Tensor:
     del soft_width  # imagination only
     return H.bad_root_tilt(*_ctx(env, command_name), threshold=threshold)
+
+
+@analytic(H.bad_body_pos_dev)
+def bad_body_pos_dev(env: ManagerBasedRlEnv, command_name: str, threshold: float, soft_width: float) -> torch.Tensor:
+    del soft_width  # imagination only
+    return H.bad_body_pos_dev(*_ctx(env, command_name), threshold=threshold)
+
+
+@analytic(H.bad_root_pos_dev)
+def bad_root_pos_dev(env: ManagerBasedRlEnv, command_name: str, threshold: float, soft_width: float) -> torch.Tensor:
+    del soft_width  # imagination only
+    return H.bad_root_pos_dev(*_ctx(env, command_name), threshold=threshold)
+
+
+@analytic(H.bad_root_ori_dev)
+def bad_root_ori_dev(env: ManagerBasedRlEnv, command_name: str, threshold: float, soft_width: float) -> torch.Tensor:
+    del soft_width  # imagination only
+    return H.bad_root_ori_dev(*_ctx(env, command_name), threshold=threshold)
 
 
 def motion_end(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:

@@ -71,6 +71,13 @@ def test_sim_matches_analytic_heads(setup):
         # reward: reward manager == the runner's imagined reward on the same transition
         r, _ = runner._reward_term(S1, cmd.f, a, a_prev)
         torch.testing.assert_close(r, rew, atol=1e-6, rtol=1e-5)
+        # failure terminations: termination manager == hard analytic terms
+        tm = u.termination_manager
+        for name in tm.active_terms:
+            tc = tm.get_term_cfg(name)
+            if not tc.time_out:
+                p = {k: v for k, v in tc.params.items() if k not in ("command_name", "soft_width")}
+                assert torch.equal(tc.func.analytic(runner.heads, StepCtx(S1, cmd.f), **p), tm.get_term(name)), name
         states.append(S1), fs.append(cmd.f.clone()), acts.append(a)
     # policy observation: manager's history buffers == analytic history of the last 10 states
     H = runner.hist
@@ -85,6 +92,41 @@ def test_sim_matches_analytic_heads(setup):
     hist = runner.obs_policy.push(hist, cmd.obs_ctx())
     torch.testing.assert_close(runner.obs_policy.assemble(hist, cmd.obs_ctx()), obs["policy"], atol=1e-5, rtol=1e-5)
     assert m.num_frames > 0
+
+
+def test_deviation_terminations(setup):
+    """MuscleMimic's deviation checks: zero on the reference, each fires on its own perturbation."""
+    import math
+
+    from muscle_supermimic.tasks.tracking.mdp import heads as H
+    from muscle_supermimic.tasks.tracking.mdp.heads import StepCtx
+
+    _, runner = setup
+    cmd, h = runner.cmd, runner.heads
+    assert h.kin.body_names[0] == "pelvis" and 0 not in h.rel_tracked.tolist()
+    assert len(h.rel_tracked) == h.num_tracked - 1
+    f = torch.arange(0, 200, 25)
+    p, R, v, w, q, qd = cmd.motion.ref_state(f)
+    act = torch.zeros(len(f), cmd.info.num_muscles)
+    terms = (H.bad_body_pos_dev, H.bad_root_pos_dev, H.bad_root_ori_dev)
+
+    def fired(p, R, threshold):  # fraction of frames on which each term fires
+        ctx = StepCtx((p, R, v, w, q, qd, act), f)
+        return [fn(h, ctx, threshold=threshold).float().mean().item() for fn in terms]
+
+    assert fired(p, R, 1e-2) == [0.0, 0.0, 0.0]  # robot on the reference (rot_angle_sq floors the angle at ~1.4 mrad)
+    shift = torch.tensor([0.0, 1.2, 0.0])
+    assert fired(p + shift, R, 1.0) == [0.0, 1.0, 0.0]  # 1.2 m sideways drift, same pose
+    c, s = math.cos(1.2), math.sin(1.2)
+    Rz = torch.tensor([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    assert fired(p, Rz @ R, 1.0)[1:] == [0.0, 1.0]  # 1.2 rad heading error
+    # soft versions: one half at the threshold, finite gradients on the reference
+    soft = H.bad_root_pos_dev(h, StepCtx((p + torch.tensor([0.0, 1.0, 0.0]), R, v, w, q, qd, act), f), 1.0, 0.05)
+    torch.testing.assert_close(soft, torch.full_like(soft, 0.5), atol=1e-4, rtol=0)
+    pg, Rg = p.clone().requires_grad_(), R.clone().requires_grad_()
+    ctx = StepCtx((pg, Rg, v, w, q, qd, act), f)
+    sum(fn(h, ctx, threshold=1.0, soft_width=0.05).sum() for fn in terms).backward()
+    assert torch.isfinite(pg.grad).all() and torch.isfinite(Rg.grad).all()
 
 
 def test_runner_learns_and_round_trips(setup, tmp_path):
