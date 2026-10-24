@@ -1,9 +1,9 @@
 """Analytic MDP heads shared by the simulator and the world model (SuperMimic paper Appendix A).
 
 Port of supermimic_vibed's ``mdp.py``. The state tuple is
-``S = (p, R, v, w, q, qd, act)``: pelvis position, canonical root rotation matrix, world linear and
-angular velocity of the pelvis link frame, the 37 independent joint positions and velocities, and the
-700 muscle activations (the plant's actuator state). Every observation, reward and termination term
+``S = (p, R, v, w, q, qd, act)``: root position, canonical root rotation matrix, world linear and
+angular velocity of the root link frame, the independent joint positions and velocities (MS-Human-700:
+37), and the muscle activations (the plant's actuator state; MS-Human-700: 700). Every observation, reward and termination term
 of the mjlab task is a function of a :class:`StepCtx` built on such a state, so the same code labels
 simulator transitions (through the managers) and imagined ones (in the SuperMimic runner).
 """
@@ -16,7 +16,7 @@ import torch
 
 from muscle_supermimic.utils.rotations import mat_to_6d, mat_to_quat, quat_to_mat, rot_angle_sq, yaw_mat
 
-from .kinematics import MSHumanKinematics
+from .kinematics import SkeletonKinematics
 from .motion import MotionLib
 
 BODY_STATE_DIM_EXTRA = 3 + 4 + 3 + 3  # p, quat, v, w (+ q, qd)
@@ -65,14 +65,15 @@ def invariant_features(S) -> torch.Tensor:
 
 
 class TrackingHeads:
-    def __init__(self, kin: MSHumanKinematics, motion: MotionLib, default_q: torch.Tensor, future_frames: int):
+    def __init__(self, kin: SkeletonKinematics, motion: MotionLib, default_q: torch.Tensor, future_frames: int):
         self.kin, self.motion, self.default_q, self.K = kin, motion, default_q, future_frames
         self.nq = kin.num_q
         self.body_state_dim = BODY_STATE_DIM_EXTRA + 2 * self.nq
         self.inv_dim = 1 + 6 + 3 + 3 + 2 * self.nq
         self.num_tracked = len(kin.tracked_idx)
-        # tracked bodies other than the root (kinematic body 0), for root-relative deviations
-        self.rel_tracked = torch.tensor([i for i, b in enumerate(kin.tracked_idx) if b != 0], device=kin.device)
+        # tracked bodies other than the root's own rigid body, for root-relative deviations (MuscleMimic's
+        # relative mimic sites leave out the pelvis site)
+        self.rel_tracked = torch.tensor([i for i, r in enumerate(kin.tracked_on_root) if not r], device=kin.device)
 
     # ---------------- shared pieces (cached per ctx) ----------------
     def fk(self, ctx: StepCtx):

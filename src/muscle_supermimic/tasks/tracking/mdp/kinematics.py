@@ -1,11 +1,11 @@
-"""Differentiable forward kinematics of MS-Human-700 in torch, built from the compiled MJCF.
+"""Differentiable forward kinematics of a musculoskeletal model in torch, built from the compiled MJCF.
 
-Unlike the G1 (one hinge per link, at the link origin), the human skeleton has bodies with several
-joints in sequence (the knee carries 3 slides + 3 hinges), joints away from the body origin, welded
-bodies (vertebrae, sternum) and 42 joints that are polynomial functions of an independent joint
-(``<equality>`` couplers). The FK here replicates ``mj_kinematics`` exactly for all of that, takes only
-the 37 independent coordinates, and propagates link-origin velocities alongside, so the same function
-labels reference motions, simulator transitions and world-model predictions.
+Unlike the G1 (one hinge per link, at the link origin), the human skeletons have bodies with several
+joints in sequence (MS-Human-700's knee carries 3 slides + 3 hinges), joints away from the body origin,
+welded bodies (vertebrae, sternum) and joints that are polynomial functions of an independent joint
+(``<equality>`` couplers, 42 in MS-Human-700). The FK here replicates ``mj_kinematics`` exactly for all
+of that, takes only the independent coordinates, and propagates link-origin velocities alongside, so the
+same function labels reference motions, simulator transitions and world-model predictions.
 
 Only bodies on the path to a tracked body are evaluated; joint-less bodies on that path are folded
 into their children's fixed offsets.
@@ -17,7 +17,7 @@ import mujoco
 import numpy as np
 import torch
 
-from muscle_supermimic.assets.robots.mshuman700 import ROOT_BODY, ModelInfo, compiled_model, root_offset
+from muscle_supermimic.assets.robots.model_info import ModelInfo, root_offset
 from muscle_supermimic.utils.rotations import axis_angle_to_mat, quat_to_mat
 
 
@@ -25,16 +25,16 @@ def _mv(R: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     return (R @ x.unsqueeze(-1)).squeeze(-1)
 
 
-class MSHumanKinematics:
-    def __init__(self, tracked: list[str] | tuple[str, ...], device: str, m: mujoco.MjModel | None = None,
-                 dtype: torch.dtype = torch.float32):
-        m = m or compiled_model()
+class SkeletonKinematics:
+    def __init__(self, tracked: list[str] | tuple[str, ...], device: str, m: mujoco.MjModel, dtype: torch.dtype = torch.float32):
         info = ModelInfo(m)
         self.info, self.device = info, device
         self.num_q = len(info.indep_ids)
         self.R_off = torch.tensor(root_offset(m), dtype=dtype, device=device)
-        root = m.body(ROOT_BODY).id
+        root = info.root_id
         tracked_ids = [m.body(n).id for n in tracked]
+        # tracked bodies welded to the root (the root body itself, or a body without joints under it)
+        self.tracked_on_root = [bool(m.body_weldid[b] == root) for b in tracked_ids]
         needed = set()
         for b in tracked_ids:
             while b != 0:
@@ -97,12 +97,12 @@ class MSHumanKinematics:
         self.num_bodies = len(self.body_names)
         self.tracked_idx = [self.body_names.index(n) for n in tracked]
         # coupled joints: q_c = qpos0_c + sum_k c_k (q_i - qpos0_i)^k
-        self.c_src = torch.tensor([indep_col[info.coupled[j][0]] for j in coupled_list], device=device)
+        # (a joint held at a constant reads column 0 with zero higher coefficients, so it stays at qpos0 + c_0)
+        srcs = [info.coupled[j][0] for j in coupled_list]
+        self.c_src = torch.tensor([0 if s is None else indep_col[s] for s in srcs], device=device)
         self.c_coef = torch.tensor(np.array([info.coupled[j][1] for j in coupled_list]), dtype=dtype, device=device)
         self.c_q0 = torch.tensor([m.qpos0[m.jnt_qposadr[j]] for j in coupled_list], dtype=dtype, device=device)
-        self.c_src_q0 = torch.tensor(
-            [m.qpos0[m.jnt_qposadr[info.coupled[j][0]]] for j in coupled_list], dtype=dtype, device=device
-        )
+        self.c_src_q0 = torch.tensor([0.0 if s is None else m.qpos0[m.jnt_qposadr[s]] for s in srcs], dtype=dtype, device=device)
         # every non-root joint in model order, as a gather from cat(independent, coupled)
         self.full_index = torch.tensor(
             [indep_col[j] if j in indep_col else self.num_q + coupled_col[j] for j in info.joint_ids], device=device
@@ -173,9 +173,9 @@ class MSHumanKinematics:
         )
 
     def root_body_quat(self, R: torch.Tensor) -> torch.Tensor:
-        """Canonical root rotation -> pelvis body rotation (the free joint's qpos quaternion is its wxyz)."""
+        """Canonical root rotation -> root body rotation (the free joint's qpos quaternion is its wxyz)."""
         return R @ self.R_off.T
 
     def canonical_root(self, quat_body: torch.Tensor) -> torch.Tensor:
-        """Free-joint quaternion (wxyz) of the pelvis body -> canonical root rotation matrix."""
+        """Free-joint quaternion (wxyz) of the root body -> canonical root rotation matrix."""
         return quat_to_mat(quat_body) @ self.R_off

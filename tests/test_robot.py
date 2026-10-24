@@ -3,7 +3,8 @@
 import mujoco
 import numpy as np
 
-from muscle_supermimic.assets.robots.mshuman700 import ModelInfo, compiled_model
+from muscle_supermimic.assets.robots.model_info import ModelInfo
+from muscle_supermimic.assets.robots.mshuman700 import compiled_model
 from muscle_supermimic.assets.robots.mshuman700.mshuman700_cfg import muscle_spans
 
 WRIST = {"deviation_r", "flexion_r", "deviation_l", "flexion_l"}

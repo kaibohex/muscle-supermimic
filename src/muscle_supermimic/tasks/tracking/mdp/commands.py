@@ -18,11 +18,11 @@ import torch
 from mjlab.managers.command_manager import CommandTerm
 from mjlab.tasks.tracking.mdp import MotionCommandCfg as MjlabMotionCommandCfg
 
-from muscle_supermimic.assets.robots.mshuman700 import ROOT_BODY, ModelInfo
+from muscle_supermimic.assets.robots.model_info import ModelInfo
 from muscle_supermimic.utils.rotations import mat_to_quat, quat_to_mat
 
 from .heads import StepCtx, TrackingHeads
-from .kinematics import MSHumanKinematics
+from .kinematics import SkeletonKinematics
 from .motion import MotionLib
 from .muscle import MuscleActivation
 
@@ -38,14 +38,14 @@ class MotionCommand(CommandTerm):
         super().__init__(cfg, env)
         if not cfg.motion_file:
             raise ValueError("motion_file is empty: pass --env.commands.motion.motion-file <clip.npz | dir> (play: --motion-file)")
-        if cfg.anchor_body_name != ROOT_BODY:
-            raise ValueError(f"the reward re-anchors on the root: anchor_body_name must be {ROOT_BODY!r}")
         self.robot: Entity = env.scene[cfg.entity_name]
         m = self.robot.cfg.spec_fn().compile()  # the entity's own variant (e.g. locked hands), unprefixed
         self.info = ModelInfo(m)
+        if m.body_weldid[m.body(cfg.anchor_body_name).id] != self.info.root_id:
+            raise ValueError(f"the reward re-anchors on the root: anchor_body_name must be welded to {self.info.root_name!r}")
         assert tuple(self.robot.joint_names) == tuple(self.info.joint_names), "entity joints differ from the model's"
         dev = self.device
-        self.kin = MSHumanKinematics(cfg.body_names, dev, m)
+        self.kin = SkeletonKinematics(cfg.body_names, dev, m)
         bin_frames = max(1, round(cfg.bin_seconds / env.step_dt))
         self.motion = MotionLib.from_path(cfg.motion_file, self.kin, env.step_dt, dev, bin_frames=bin_frames)
         self.muscle = MuscleActivation(m, env.cfg.decimation, env.physics_dt, dev)
@@ -185,9 +185,10 @@ class MotionCommandCfg(MjlabMotionCommandCfg):
 
     motion_file: str = ""
     """A clip (.npz) or a directory of clips; see :mod:`.motion` for the formats."""
-    anchor_body_name: str = ROOT_BODY
+    anchor_body_name: str = "pelvis"
+    """The root's rigid body (the root body itself, or one welded to it)."""
     body_names: tuple[str, ...] = ()
-    """Tracked bodies of the reward (the first is the root)."""
+    """Tracked bodies of the reward (the root's rigid body first)."""
     entity_name: str = "robot"
     joint_position_range: tuple[float, float] = (0.0, 0.0)
     sampling_mode: Literal["return", "uniform", "start"] = "return"

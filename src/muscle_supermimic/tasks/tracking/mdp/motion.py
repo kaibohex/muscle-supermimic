@@ -20,10 +20,11 @@ import mujoco
 import numpy as np
 import torch
 
-from muscle_supermimic.assets.robots.mshuman700 import ROOT_BODY, ModelInfo, compiled_model, original_model
+from muscle_supermimic.assets.robots.model_info import ModelInfo
+from muscle_supermimic.assets.robots.mshuman700 import ROOT_BODY, compiled_model, original_model
 from muscle_supermimic.utils.rotations import mat_to_6d, mat_to_quat, quat_slerp, quat_to_mat, so3_log, yaw_mat
 
-from .kinematics import MSHumanKinematics
+from .kinematics import SkeletonKinematics
 
 GOAL_FRAME_EXTRA = 3 + 6 + 3 + 3  # root dp, rot6, root v, root w (+ q, qd per frame)
 
@@ -58,7 +59,7 @@ def native_to_canonical(qpos: np.ndarray, info: ModelInfo, R_off: np.ndarray):
 
 
 class MotionLib:
-    def __init__(self, files: list[str], kin: MSHumanKinematics, control_dt: float, device: str, bin_frames: int = 50):
+    def __init__(self, files: list[str], kin: SkeletonKinematics, control_dt: float, device: str, bin_frames: int = 50):
         assert files, "no motion clips"
         self.device, self.dt, self.bin_frames = device, control_dt, bin_frames
         info, R_off = kin.info, kin.R_off.double().cpu().numpy()
@@ -127,7 +128,7 @@ class MotionLib:
             self.frame_bin[s:e] = b
 
     @staticmethod
-    def from_path(path: str, kin: MSHumanKinematics, control_dt: float, device: str, bin_frames: int = 50) -> MotionLib:
+    def from_path(path: str, kin: SkeletonKinematics, control_dt: float, device: str, bin_frames: int = 50) -> MotionLib:
         files = sorted(glob.glob(os.path.join(path, "*.npz"))) if os.path.isdir(path) else [path]
         return MotionLib(files, kin, control_dt, device, bin_frames)
 

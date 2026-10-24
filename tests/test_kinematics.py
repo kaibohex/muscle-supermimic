@@ -5,12 +5,17 @@ import numpy as np
 import pytest
 import torch
 
-from muscle_supermimic.assets.robots.mshuman700 import ModelInfo, compiled_model
-from muscle_supermimic.tasks.tracking.mdp.kinematics import MSHumanKinematics
-from muscle_supermimic.utils.rotations import quat_to_mat, so3_exp
+from muscle_supermimic.assets.robots import mshuman700
+from muscle_supermimic.assets.robots.model_info import ModelInfo
+from muscle_supermimic.tasks.tracking.config.mshuman700.env_cfgs import TRACKED_BODIES as MSHUMAN700_TRACKED
+from muscle_supermimic.tasks.tracking.mdp.kinematics import SkeletonKinematics
+from muscle_supermimic.utils.rotations import so3_exp
 
-TRACKED = ("pelvis", "femur_r", "tibia_r", "calcn_r", "toes_r", "femur_l", "tibia_l", "calcn_l", "toes_l",
-           "thoracic12", "head_neck", "humerus_r", "ulna_r", "hand_r", "humerus_l", "ulna_l", "hand_l")  # fmt: skip
+# (compiled entity model, tracked bodies) of every robot variant
+MODELS = {
+    "mshuman700": (lambda: mshuman700.compiled_model(), MSHUMAN700_TRACKED),
+    "mshuman700-locked-hands": (lambda: mshuman700.compiled_model(lock_hands=True), MSHUMAN700_TRACKED),
+}
 
 
 def _random_states(info, n, rng):
@@ -22,11 +27,12 @@ def _random_states(info, n, rng):
     return p, R, v, w, q, qd
 
 
-@pytest.mark.parametrize("lock_hands", [False, True])
-def test_fk_matches_mujoco(lock_hands):
-    m = compiled_model(lock_hands=lock_hands)
+@pytest.mark.parametrize("variant", MODELS)
+def test_fk_matches_mujoco(variant):
+    model_fn, tracked = MODELS[variant]
+    m = model_fn()
     info = ModelInfo(m)
-    kin = MSHumanKinematics(TRACKED, "cpu", m, dtype=torch.float64)
+    kin = SkeletonKinematics(tracked, "cpu", m, dtype=torch.float64)
     d = mujoco.MjData(m)
     rng = np.random.default_rng(0)
     n = 16
@@ -42,7 +48,7 @@ def test_fk_matches_mujoco(lock_hands):
         d.qvel[:3], d.qvel[3:6] = v[i], Rb[i].T @ w[i]
         d.qpos[7:], d.qvel[6:] = qf[i], qdf[i]
         mujoco.mj_forward(m, d)
-        for k, name in enumerate(TRACKED):
+        for k, name in enumerate(tracked):
             b = m.body(name).id
             np.testing.assert_allclose(bp[i, k].numpy(), d.xpos[b], atol=1e-9, err_msg=name)
             np.testing.assert_allclose(bR[i, k].numpy(), d.xmat[b].reshape(3, 3), atol=1e-9, err_msg=name)
@@ -52,8 +58,9 @@ def test_fk_matches_mujoco(lock_hands):
             np.testing.assert_allclose(bv[i, k].numpy(), vel[3:], atol=1e-8, err_msg=name)
 
 
-def test_coupled_joints_satisfy_equalities():
-    m = compiled_model()
+@pytest.mark.parametrize("variant", MODELS)
+def test_coupled_joints_satisfy_equalities(variant):
+    m = MODELS[variant][0]()
     info = ModelInfo(m)
     d = mujoco.MjData(m)
     rng = np.random.default_rng(1)
@@ -66,9 +73,16 @@ def test_coupled_joints_satisfy_equalities():
     np.testing.assert_allclose(d.efc_pos[eq_rows], 0.0, atol=1e-12)
 
 
-def test_canonical_root_is_identity_at_rest():
-    m = compiled_model()
-    kin = MSHumanKinematics(TRACKED, "cpu", m)
-    R = kin.canonical_root(torch.tensor(m.body("pelvis").quat, dtype=torch.float32))
+@pytest.mark.parametrize("variant", MODELS)
+def test_canonical_root_is_identity_at_rest(variant):
+    model_fn, tracked = MODELS[variant]
+    m = model_fn()
+    kin = SkeletonKinematics(tracked, "cpu", m)
+    R = kin.canonical_root(torch.tensor(m.qpos0[3:7], dtype=torch.float32))
     torch.testing.assert_close(R, torch.eye(3), atol=1e-6, rtol=0)
-    assert quat_to_mat(torch.tensor(m.body("pelvis").quat)).shape == (3, 3)
+    # and that default pose stands upright facing +x: toes ahead of heels, left hip at +y
+    d = mujoco.MjData(m)
+    mujoco.mj_kinematics(m, d)
+    x = lambda name: d.xpos[m.body(name).id]  # noqa: E731
+    assert x("toes_r")[0] > x("calcn_r")[0] + 0.1 and x("femur_l")[1] > x("femur_r")[1] + 0.1
+    assert x(tracked[0])[2] > x("toes_r")[2] + 0.7

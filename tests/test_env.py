@@ -103,8 +103,8 @@ def test_deviation_terminations(setup):
 
     _, runner = setup
     cmd, h = runner.cmd, runner.heads
-    assert h.kin.body_names[0] == "pelvis" and 0 not in h.rel_tracked.tolist()
-    assert len(h.rel_tracked) == h.num_tracked - 1
+    assert h.kin.tracked_on_root[0] and not any(h.kin.tracked_on_root[1:])  # the pelvis, first, is rigid with the root
+    assert h.rel_tracked.tolist() == list(range(1, h.num_tracked))
     f = torch.arange(0, 200, 25)
     p, R, v, w, q, qd = cmd.motion.ref_state(f)
     act = torch.zeros(len(f), cmd.info.num_muscles)
