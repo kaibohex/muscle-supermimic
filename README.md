@@ -177,8 +177,8 @@ toes x2, thoracic12, head_neck, humerus, ulna, hand x2).
   site rpos 0.6, site rquat 0.01, site rvel 0.1 + 0.1; kernels 10 / 2 / 10 / 10 / 100 / 10 / 0.1), times
   supermusclemimic's reward scale 0.1; no penalties (all off in the full-body configuration).
 * **Termination**: mean root-relative site deviation > 1 m, root position deviation > 1 m, root
-  orientation deviation > 1 rad (sigmoid-softened with 5 % widths in imagination); time-outs at 10 s
-  and at the clip end, bootstrapped.
+  orientation deviation > 1 rad (sigmoid-softened with 5 % widths in imagination); time-out at the clip
+  end, bootstrapped (and at MuscleMimic's horizon of 30000 steps, 300 s, which no clip reaches).
 
 Muscle length, velocity and force on imagined states come from a torch replica of MuJoCo's spatial
 tendons (site-site segments, sphere / cylinder wraps with side sites and inside wraps) and Hill muscle
