@@ -1,0 +1,103 @@
+"""The mjlab task and the SuperMimic runner on CPU (MuJoCo-Warp's CPU backend), 2 envs.
+
+Checks that the simulator side (mjlab managers) and the imagination side (analytic heads) agree:
+reset states, muscle activations, rewards, the policy observation history and the goal. Then runs a
+few tiny training iterations end to end and round-trips a checkpoint.
+
+Needs a clip: ``data/motions/walk.npz`` (see README), otherwise the module is skipped.
+"""
+
+import os
+from dataclasses import asdict
+
+import pytest
+import torch
+
+MOTION = os.path.join(os.path.dirname(__file__), "..", "data", "motions", "walk.npz")
+TASKS = ["Mjlab-SuperMimic-Flat-MS-Human-700"]
+pytestmark = pytest.mark.skipif(not os.path.exists(MOTION), reason="no test clip at data/motions/walk.npz")
+
+
+@pytest.fixture(scope="module", params=TASKS)
+def setup(request):
+    import mjlab.tasks  # noqa: F401
+    from mjlab.envs import ManagerBasedRlEnv
+    from mjlab.rl import RslRlVecEnvWrapper
+    from mjlab.tasks.registry import load_env_cfg, load_rl_cfg, load_runner_cls
+
+    TASK = request.param
+    torch.manual_seed(0)
+    cfg = load_env_cfg(TASK)
+    cfg.commands["motion"].motion_file = MOTION
+    cfg.commands["motion"].sampling_mode = "start"  # deterministic resets, far from the clip end
+    cfg.scene.num_envs = 2
+    env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=cfg, device="cpu"))
+    rl = asdict(load_rl_cfg(TASK))
+    rl.update(wm_hidden=(64, 64), enc_hidden=(64,), dec_hidden=(64,), critic_hidden=(32,), buffer_steps=40, warmup_steps=20,
+              wm_batch=16, wm_batches=2, pi_batch=8, horizon=4, wm_only_iters=2, log_interval=2, save_interval=1000)  # fmt: skip
+    runner = load_runner_cls(TASK)(env, rl, device="cpu")
+    return env, runner
+
+
+def test_reset_writes_reference_state(setup):
+    _, runner = setup
+    cmd = runner.cmd
+    S = cmd.read_state()
+    p, R, _, w, q, qd = cmd.motion.ref_state(cmd.f)
+    torch.testing.assert_close(S[0], p, atol=1e-6, rtol=0)
+    torch.testing.assert_close(S[1], R, atol=1e-6, rtol=0)
+    torch.testing.assert_close(S[3], w, atol=1e-5, rtol=0)
+    torch.testing.assert_close(S[4], q.clamp(cmd.kin.q_lo, cmd.kin.q_hi), atol=1e-6, rtol=0)
+    torch.testing.assert_close(S[5], qd, atol=1e-6, rtol=0)
+    assert S[6].abs().max() == cmd.cfg.init_activation
+
+
+def test_sim_matches_analytic_heads(setup):
+    from muscle_supermimic.tasks.tracking.mdp.heads import StepCtx
+
+    env, runner = setup
+    u, cmd, m = env.unwrapped, runner.cmd, runner.motion
+    env.unwrapped.reset()
+    states, fs, acts = [cmd.read_state()], [cmd.f.clone()], [torch.zeros(2, cmd.info.num_muscles)]
+    gen = torch.Generator().manual_seed(0)
+    for _ in range(12):
+        S0, a_prev = cmd.read_state(), u.action_manager.action.clone()
+        a = torch.rand(2, cmd.info.num_muscles, generator=gen) * 0.3
+        obs, rew, dones, _ = env.step(a)
+        assert not dones.any()
+        S1 = cmd.read_state()
+        # muscle activation: simulator == analytic integration
+        torch.testing.assert_close(S1[6], cmd.muscle.step(S0[6], a)[0], atol=1e-6, rtol=0)
+        # reward: reward manager == the runner's imagined reward on the same transition
+        r, _ = runner._reward_term(S1, cmd.f, a, a_prev)
+        torch.testing.assert_close(r, rew, atol=1e-6, rtol=1e-5)
+        states.append(S1), fs.append(cmd.f.clone()), acts.append(a)
+    # policy observation: manager's history buffers == analytic history of the last 10 states
+    H = runner.hist
+    S_h = tuple(torch.stack([s[i] for s in states[-H:]], 1) for i in range(7))
+    hist = runner.obs_policy.init_history(StepCtx(S_h, torch.stack(fs[-H:], 1), torch.stack(acts[-H:], 1)))
+    ctx = cmd.obs_ctx()
+    torch.testing.assert_close(runner.obs_policy.assemble(hist, ctx), obs["policy"], atol=1e-5, rtol=1e-5)
+    torch.testing.assert_close(runner.obs_goal.assemble(None, ctx), obs["goal"], atol=1e-6, rtol=0)
+    # pushing one more frame matches the next manager observation too
+    a = torch.full((2, cmd.info.num_muscles), 0.1)
+    obs, *_ = env.step(a)
+    hist = runner.obs_policy.push(hist, cmd.obs_ctx())
+    torch.testing.assert_close(runner.obs_policy.assemble(hist, cmd.obs_ctx()), obs["policy"], atol=1e-5, rtol=1e-5)
+    assert m.num_frames > 0
+
+
+def test_runner_learns_and_round_trips(setup, tmp_path):
+    env, runner = setup
+    runner.log_dir = str(tmp_path)
+    runner.learn(num_learning_iterations=4)
+    assert runner.it == 4 and runner.buffer.size > 0
+    ck = os.path.join(tmp_path, "model_000004.pt")
+    assert os.path.exists(ck)
+    before = {k: v.clone() for k, v in runner.pi.state_dict().items()}
+    runner.load(ck, load_cfg={"actor": True})
+    for k, v in runner.pi.state_dict().items():
+        torch.testing.assert_close(v, before[k])
+    policy = runner.get_inference_policy()
+    a = policy(env.get_observations())
+    assert a.shape == (2, runner.nm) and torch.isfinite(a).all() and (a >= 0).all() and (a <= 1).all()
