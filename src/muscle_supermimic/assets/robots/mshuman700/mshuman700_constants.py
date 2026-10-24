@@ -54,6 +54,11 @@ FREE_JOINT: str = "root"
 # Every muscle drives exactly one spatial tendon named `<muscle>_tendon`; there are no other tendons.
 MUSCLE_TENDON_EXPR: tuple[str, ...] = (r".*_tendon",)
 
+# Hand + wrist: every joint in these subtrees (per side the independent deviation / flexion on the
+# proximal carpal row and the two wrist_hand joints coupled to them). `lock_hands` deletes these joints,
+# welding each hand to its radius in the neutral pose, and the muscles that act on nothing else.
+WRIST_ROOT_BODIES: tuple[str, ...] = ("proximal_row_r", "proximal_row_l")
+
 # Upstream standing pose: pelvis 0.95 m above the floor, its OpenSim frame (x forward, y up, z right)
 # rotated +90 deg about world x so that y points up.
 INIT_POS: tuple[float, float, float] = (0.0, 0.0, 0.95)

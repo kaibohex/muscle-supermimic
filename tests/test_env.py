@@ -14,7 +14,7 @@ import pytest
 import torch
 
 MOTION = os.path.join(os.path.dirname(__file__), "..", "data", "motions", "walk.npz")
-TASKS = ["Mjlab-SuperMimic-Flat-MS-Human-700"]
+TASKS = ["Mjlab-SuperMimic-Flat-MS-Human-700", "Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands"]
 pytestmark = pytest.mark.skipif(not os.path.exists(MOTION), reason="no test clip at data/motions/walk.npz")
 
 

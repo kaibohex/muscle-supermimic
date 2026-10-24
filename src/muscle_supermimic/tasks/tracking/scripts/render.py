@@ -6,7 +6,7 @@
   the motion library resamples it to 50 Hz, with a foot-ground clearance report (penetration / floating).
 
   uv run ms-render traj.npz out_dir/ [--clips walk] [--seconds 10]
-  uv run ms-render data/motions/walk.npz out_dir/
+  uv run ms-render data/motions/walk.npz out_dir/ [--lock-hands]
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ from muscle_supermimic.utils.rotations import mat_to_quat
 GHOST_RGBA = (0.35, 0.6, 1.0, 0.3)
 
 
-def build_scene(ghost: bool = True) -> mujoco.MjModel:
+def build_scene(lock_hands: bool, ghost: bool = True) -> mujoco.MjModel:
     scene = mujoco.MjSpec()
     scene.visual.global_.offwidth, scene.visual.global_.offheight = 1920, 1080
     scene.visual.headlight.ambient = [0.4, 0.4, 0.4]
@@ -36,7 +36,7 @@ def build_scene(ghost: bool = True) -> mujoco.MjModel:
     scene.worldbody.add_geom(type=mujoco.mjtGeom.mjGEOM_PLANE, size=[0, 0, 0.05], material="grid")
     scene.worldbody.add_light(pos=[0, 0, 5], dir=[0, 0, -1], type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL, diffuse=[0.6, 0.6, 0.6])
     for prefix, is_ghost in (("robot/", False), ("ref/", True))[: 2 if ghost else 1]:
-        spec = get_spec()
+        spec = get_spec(lock_hands=lock_hands)
         for geom in spec.geoms:
             geom.contype = geom.conaffinity = 0
             if is_ghost:
@@ -80,17 +80,17 @@ def _lowest_point(m: mujoco.MjModel, data: mujoco.MjData, g: int) -> float:
     return z - m.geom_rbound[g]
 
 
-def replay_motion(path: str, out_dir: str, seconds: float | None, width: int, height: int):
+def replay_motion(path: str, out_dir: str, lock_hands: bool, seconds: float | None, width: int, height: int):
     import mediapy
 
     from muscle_supermimic.tasks.tracking.mdp.kinematics import MSHumanKinematics
     from muscle_supermimic.tasks.tracking.mdp.motion import MotionLib
 
-    kin = MSHumanKinematics(("pelvis",), "cpu", compiled_model())
+    kin = MSHumanKinematics(("pelvis",), "cpu", compiled_model(lock_hands=lock_hands))
     mot = MotionLib.from_path(path, kin, 0.02, "cpu")
     q_full, _ = kin.full_joint_state(mot.q, mot.qd)
     qpos = torch_cat(mot.root_p, mat_to_quat(mot.root_R @ kin.R_off.T), q_full)
-    m = build_scene(ghost=False)
+    m = build_scene(lock_hands, ghost=False)
     for c, name in enumerate(mot.names):
         s, n = int(mot.clip_start[c]), int(mot.clip_len[c])
         n = min(n, int(seconds * 50)) if seconds else n
@@ -113,6 +113,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input", help="a trajectory from ms-eval --record, or a motion clip")
     ap.add_argument("out_dir")
+    ap.add_argument("--lock-hands", action="store_true", help="motion replay on the locked-hands model")
     ap.add_argument("--clips", nargs="*", default=None, help="clip names (default: all)")
     ap.add_argument("--seconds", type=float, default=None, help="render at most this long per clip")
     ap.add_argument("--width", type=int, default=1280)
@@ -123,10 +124,11 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     d = np.load(args.input)
     if "ref_qpos" not in d.files:
-        return replay_motion(args.input, args.out_dir, args.seconds, args.width, args.height)
+        return replay_motion(args.input, args.out_dir, args.lock_hands, args.seconds, args.width, args.height)
     qpos, f, alive, ref = d["qpos"], d["f"], d["alive"], d["ref_qpos"]
     nq = qpos.shape[-1]
-    m = build_scene()
+    lock_hands = next(lh for lh in (False, True) if compiled_model(lock_hands=lh).nq == nq)
+    m = build_scene(lock_hands)
     assert m.nq == 2 * nq
     for c, name in enumerate(d["names"]):
         if args.clips and name not in args.clips:

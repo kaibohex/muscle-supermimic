@@ -2,6 +2,7 @@
 
 import mujoco
 import numpy as np
+import pytest
 import torch
 
 from muscle_supermimic.assets.robots.mshuman700 import ModelInfo, compiled_model
@@ -21,8 +22,9 @@ def _random_states(info, n, rng):
     return p, R, v, w, q, qd
 
 
-def test_fk_matches_mujoco():
-    m = compiled_model()
+@pytest.mark.parametrize("lock_hands", [False, True])
+def test_fk_matches_mujoco(lock_hands):
+    m = compiled_model(lock_hands=lock_hands)
     info = ModelInfo(m)
     kin = MSHumanKinematics(TRACKED, "cpu", m, dtype=torch.float64)
     d = mujoco.MjData(m)

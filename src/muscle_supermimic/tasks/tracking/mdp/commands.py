@@ -41,7 +41,7 @@ class MotionCommand(CommandTerm):
         if cfg.anchor_body_name != ROOT_BODY:
             raise ValueError(f"the reward re-anchors on the root: anchor_body_name must be {ROOT_BODY!r}")
         self.robot: Entity = env.scene[cfg.entity_name]
-        m = self.robot.cfg.spec_fn().compile()  # the entity's own variant unprefixed
+        m = self.robot.cfg.spec_fn().compile()  # the entity's own variant (e.g. locked hands), unprefixed
         self.info = ModelInfo(m)
         assert tuple(self.robot.joint_names) == tuple(self.info.joint_names), "entity joints differ from the model's"
         dev = self.device
