@@ -1,14 +1,20 @@
 """Reference motion library: clips resampled to the control rate, with FK of the tracked bodies.
 
-Port of supermimic_vibed's ``MotionLib`` (github.com/zita-ch/supermimic_vibed, MIT) for MS-Human-700.
-A clip is one ``.npz`` in either format:
+Port of supermimic_vibed's ``MotionLib`` (github.com/zita-ch/supermimic_vibed, MIT). A clip is one
+``.npz`` in one of these formats:
 
 * **canonical** -- ``fps``, ``root_pos`` (T,3), ``root_quat`` (T,4, wxyz, canonical root frame: x
   forward, y left, z up), ``joint_pos`` (T,J) and ``joint_names`` (J,); without names the 37 columns
-  are taken in the full model's order. Joints the model lacks (e.g. locked wrists) are dropped;
+  are taken in MS-Human-700's full model order. Joints the model lacks (e.g. locked wrists) are dropped;
 * **MS-Human-700 native** -- ``qpos_traj`` (T,85) in the upstream model's qpos layout (6 OpenSim
   pelvis DoF first) and ``framerate``, as msgym's ``motion_data/*.npz``. The root pose is recovered
-  with MuJoCo FK on the upstream model; coupled joints are ignored (they follow from the independent ones).
+  with MuJoCo FK on the upstream model;
+* **MuscleMimic trajectory** -- ``qpos`` (T,nq) in the layout given by ``joint_names`` (+ ``jnt_type``),
+  the root free joint first, and ``frequency``, as MuscleMimic's retargeted MyoFullBody caches
+  (``MyoFullBody/gmr/KIT/<subject>/<clip>.npz``).
+
+Coupled joints in a clip are ignored (they follow from the independent ones). A directory is searched
+recursively; its clips are named by their path relative to it.
 """
 
 from __future__ import annotations
@@ -20,19 +26,33 @@ import mujoco
 import numpy as np
 import torch
 
-from muscle_supermimic.assets.robots.mshuman700 import ROOT_BODY, ModelInfo, compiled_model, original_model
+from muscle_supermimic.assets.robots import mshuman700
+from muscle_supermimic.assets.robots.model_info import ModelInfo
 from muscle_supermimic.utils.rotations import mat_to_quat, quat_slerp, quat_to_mat, so3_log
 
-from .kinematics import MSHumanKinematics
+from .kinematics import SkeletonKinematics
+
+QPOS_WIDTH = {int(mujoco.mjtJoint.mjJNT_FREE): 7, int(mujoco.mjtJoint.mjJNT_BALL): 4,
+              int(mujoco.mjtJoint.mjJNT_SLIDE): 1, int(mujoco.mjtJoint.mjJNT_HINGE): 1}  # fmt: skip
+
+
+def motion_files(path: str) -> list[str]:
+    """The clip itself, or every ``.npz`` under the directory, sorted."""
+    return sorted(glob.glob(os.path.join(path, "**", "*.npz"), recursive=True)) if os.path.isdir(path) else [path]
 
 
 def load_clip(path: str, info: ModelInfo, R_off: np.ndarray) -> tuple[float, np.ndarray, np.ndarray, np.ndarray]:
-    """-> (fps, root_pos (T,3), root_quat (T,4) canonical wxyz, joint_pos (T,37) in ``info.indep_names`` order)."""
+    """-> (fps, root_pos (T,3), root_quat (T,4) canonical wxyz, joint_pos (T,J) in ``info.indep_names`` order)."""
     data = np.load(path, allow_pickle=False)
     if "qpos_traj" in data.files:
         return (float(data["framerate"]),) + native_to_canonical(data["qpos_traj"], info, R_off)
+    if "qpos" in data.files:
+        return (float(data["frequency"]),) + trajectory_to_canonical(data, info, R_off)
     q = np.asarray(data["joint_pos"], dtype=np.float64)
-    names = [str(n) for n in data["joint_names"]] if "joint_names" in data.files else ModelInfo(compiled_model()).indep_names
+    if "joint_names" in data.files:
+        names = [str(n) for n in data["joint_names"]]
+    else:
+        names = ModelInfo(mshuman700.compiled_model()).indep_names
     assert q.shape[1] == len(names), f"{path}: joint_pos has {q.shape[1]} columns for {len(names)} joint names"
     missing = [n for n in info.indep_names if n not in names]
     assert not missing, f"{path}: no data for joints {missing}"
@@ -41,10 +61,10 @@ def load_clip(path: str, info: ModelInfo, R_off: np.ndarray) -> tuple[float, np.
 
 
 def native_to_canonical(qpos: np.ndarray, info: ModelInfo, R_off: np.ndarray):
-    """Upstream 85-D qpos frames -> canonical root pose + independent joint angles."""
-    m = original_model()
+    """Upstream MS-Human-700 85-D qpos frames -> canonical root pose + independent joint angles."""
+    m = mshuman700.original_model()
     d = mujoco.MjData(m)
-    pelvis = m.body(ROOT_BODY).id
+    pelvis = m.body(mshuman700.ROOT_BODY).id
     adr = [m.jnt_qposadr[m.joint(n).id] for n in info.indep_names]
     p, quat = np.zeros((len(qpos), 3)), np.zeros((len(qpos), 4))
     for t, x in enumerate(qpos):
@@ -55,12 +75,32 @@ def native_to_canonical(qpos: np.ndarray, info: ModelInfo, R_off: np.ndarray):
     return p, quat, qpos[:, adr].astype(np.float64)
 
 
+def trajectory_to_canonical(data, info: ModelInfo, R_off: np.ndarray):
+    """MuscleMimic trajectory (root free joint + named joints in ``qpos``) -> canonical root pose + independent
+    joint angles. The trajectory's free joint must be the model's root."""
+    names = [str(n) for n in data["joint_names"]]
+    free, hinge = mujoco.mjtJoint.mjJNT_FREE, mujoco.mjtJoint.mjJNT_HINGE
+    types = data["jnt_type"] if "jnt_type" in data.files else [free] + [hinge] * (len(names) - 1)
+    adr = np.cumsum([0] + [QPOS_WIDTH[int(t)] for t in types])
+    qpos = np.asarray(data["qpos"], np.float64)
+    assert qpos.shape[1] == adr[-1], f"qpos has {qpos.shape[1]} columns, the joints need {adr[-1]}"
+    assert names[0] == info.root_joint_name and int(types[0]) == free, (
+        f"the first joint must be the root free joint {info.root_joint_name!r}, got {names[0]!r}"
+    )
+    assert "split_points" not in data.files or len(data["split_points"]) == 2, "several trajectories in one file"
+    missing = [n for n in info.indep_names if n not in names]
+    assert not missing, f"no data for joints {missing}"
+    R = quat_to_mat(torch.from_numpy(qpos[:, 3:7])) @ torch.from_numpy(R_off)
+    return qpos[:, :3].copy(), mat_to_quat(R).numpy(), qpos[:, [adr[names.index(n)] for n in info.indep_names]]
+
+
 class MotionLib:
-    def __init__(self, files: list[str], kin: MSHumanKinematics, control_dt: float, device: str, bin_frames: int = 50):
+    def __init__(self, files: list[str], kin: SkeletonKinematics, control_dt: float, device: str, bin_frames: int = 50):
         assert files, "no motion clips"
         self.device, self.dt, self.bin_frames = device, control_dt, bin_frames
         info, R_off = kin.info, kin.R_off.double().cpu().numpy()
-        self.names = [os.path.splitext(os.path.basename(f))[0] for f in files]
+        base = os.path.commonpath([os.path.dirname(os.path.abspath(f)) for f in files])
+        self.names = [os.path.splitext(os.path.relpath(os.path.abspath(f), base))[0] for f in files]
         ps, qs, js, lens = [], [], [], []
         for f in files:
             fps, p, quat, j = load_clip(f, info, R_off)
@@ -121,9 +161,8 @@ class MotionLib:
             self.frame_bin[s:e] = b
 
     @staticmethod
-    def from_path(path: str, kin: MSHumanKinematics, control_dt: float, device: str, bin_frames: int = 50) -> MotionLib:
-        files = sorted(glob.glob(os.path.join(path, "*.npz"))) if os.path.isdir(path) else [path]
-        return MotionLib(files, kin, control_dt, device, bin_frames)
+    def from_path(path: str, kin: SkeletonKinematics, control_dt: float, device: str, bin_frames: int = 50) -> MotionLib:
+        return MotionLib(motion_files(path), kin, control_dt, device, bin_frames)
 
     def ref_state(self, f: torch.Tensor):
         return self.root_p[f], self.root_R[f], self.root_v[f], self.root_w[f], self.q[f], self.qd[f]

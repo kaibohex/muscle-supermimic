@@ -16,7 +16,8 @@ import os
 
 import numpy as np
 
-from muscle_supermimic.assets.robots.mshuman700 import ModelInfo, compiled_model, root_offset
+from muscle_supermimic.assets.robots.model_info import ModelInfo, root_offset
+from muscle_supermimic.assets.robots.mshuman700 import compiled_model
 from muscle_supermimic.tasks.tracking.mdp.motion import load_clip
 
 

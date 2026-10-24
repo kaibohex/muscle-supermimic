@@ -83,10 +83,10 @@ def _lowest_point(m: mujoco.MjModel, data: mujoco.MjData, g: int) -> float:
 def replay_motion(path: str, out_dir: str, lock_hands: bool, seconds: float | None, width: int, height: int):
     import mediapy
 
-    from muscle_supermimic.tasks.tracking.mdp.kinematics import MSHumanKinematics
+    from muscle_supermimic.tasks.tracking.mdp.kinematics import SkeletonKinematics
     from muscle_supermimic.tasks.tracking.mdp.motion import MotionLib
 
-    kin = MSHumanKinematics(("pelvis",), "cpu", compiled_model(lock_hands=lock_hands))
+    kin = SkeletonKinematics(("pelvis",), "cpu", compiled_model(lock_hands=lock_hands))
     mot = MotionLib.from_path(path, kin, 0.02, "cpu")
     q_full, _ = kin.full_joint_state(mot.q, mot.qd)
     qpos = torch_cat(mot.root_p, mat_to_quat(mot.root_R @ kin.R_off.T), q_full)

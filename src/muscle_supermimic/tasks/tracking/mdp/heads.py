@@ -4,13 +4,14 @@ The MDP is MuscleMimic's, as supermusclemimic runs SuperMimic on it (where Super
 muscle model): its observation (root height and orientation, every joint position and velocity, muscle
 length / velocity / force / excitation / activation, foot touch, and the root-relative positions, rotations
 and velocities of the mimic sites), its goal (a concise lookahead of 5 reference frames 0.2 s apart and the
-motion phase), its ``MimicReward`` and its deviation terminations. The 17 tracked bodies of MS-Human-700
-stand in for MuscleMimic's 17 mimic sites (pelvis, torso, head, shoulders, elbows, hands, hips, knees,
-ankles, toes): a body frame's origin sits at the joint the corresponding site marks. Quantities are
-computed the way MuscleMimic computes them, quirks included (noted where they occur).
+motion phase), its ``MimicReward`` and its deviation terminations. Tracked bodies stand in for MuscleMimic's
+17 mimic sites (pelvis, torso, head, shoulders, elbows, hands, hips, knees, ankles, toes): on MyoFullBody
+they are the sites' own bodies (each site at its body's origin), on MS-Human-700 17 bodies whose origins
+sit at the joints the sites mark. Quantities are computed the way MuscleMimic computes them, quirks
+included (noted where they occur).
 
-The state tuple is ``S = (p, R, v, w, q, qd, act, touch)``: pelvis position, canonical root rotation
-matrix, world linear and angular velocity of the pelvis link frame, the independent joint positions and
+The state tuple is ``S = (p, R, v, w, q, qd, act, touch)``: root position, canonical root rotation
+matrix, world linear and angular velocity of the root link frame, the independent joint positions and
 velocities, the muscle activations and the four foot touch values. Every observation, reward and
 termination term of the mjlab task is a function of a :class:`StepCtx` built on such a state, so the same
 code labels simulator transitions (through the managers) and imagined ones (in the SuperMimic runner).
@@ -24,7 +25,7 @@ import torch
 
 from muscle_supermimic.utils.rotations import mat_to_6d, mat_to_quat, quat_to_mat, so3_log, yaw_mat
 
-from .kinematics import MSHumanKinematics
+from .kinematics import SkeletonKinematics
 from .motion import MotionLib
 from .muscle_geometry import MuscleGeometry
 
@@ -89,9 +90,9 @@ def _mv(R: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
 
 
 class TrackingHeads:
-    def __init__(self, kin: MSHumanKinematics, motion: MotionLib, geometry: MuscleGeometry, lookahead: int = 5,
+    def __init__(self, kin: SkeletonKinematics, motion: MotionLib, geometry: MuscleGeometry, lookahead: int = 5,
                  stride: int = 20):  # fmt: skip
-        assert kin.tracked_idx[0] == 0, "the first tracked body must be the root (MuscleMimic's main site)"
+        assert kin.tracked_on_root[0], "the first tracked body must be rigid with the root (MuscleMimic's main site)"
         self.kin, self.motion, self.geo, self.lookahead, self.stride = kin, motion, geometry, lookahead, stride
         self.nq = kin.num_q
         self.body_state_dim = BODY_STATE_DIM_EXTRA + 2 * self.nq
@@ -132,7 +133,8 @@ class TrackingHeads:
         return ctx.cache["muscles"]
 
     def pelvis(self, ctx: StepCtx):
-        """The free joint's rotation (pelvis body frame) and its qvel [v world, w body]."""
+        """The free joint's rotation (its body's frame: MS-Human-700's pelvis, MyoFullBody's ``Full Body``, to
+        which the pelvis is welded) and its qvel [v world, w body]."""
         if "pelvis" not in ctx.cache:
             Rp = ctx.S[1] @ self.kin.R_off.T
             ctx.cache["pelvis"] = (Rp, torch.cat((ctx.S[2], _mv(Rp.transpose(-1, -2), ctx.S[3])), -1))

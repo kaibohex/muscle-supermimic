@@ -1,4 +1,4 @@
-"""MDP of the MS-Human-700 SuperMimic tracking task."""
+"""MDP of the SuperMimic tracking task on the muscle-actuated humans (MuscleMimic's)."""
 
 from mjlab.envs.mdp import time_out  # noqa: F401
 

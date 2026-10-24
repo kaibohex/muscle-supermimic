@@ -21,6 +21,7 @@ import numpy as np
 import torch
 from tensordict import TensorDict
 
+from muscle_supermimic.tasks.tracking.mdp.motion import motion_files
 from muscle_supermimic.utils.rotations import mat_to_quat
 
 
@@ -34,8 +35,7 @@ def build(task: str, motion_path: str, device: str):
     cmd = cfg.commands["motion"]
     cmd.motion_file = motion_path
     cmd.sampling_mode = "start"
-    files = sorted(glob.glob(os.path.join(motion_path, "*.npz"))) if os.path.isdir(motion_path) else [motion_path]
-    cfg.scene.num_envs = len(files)
+    cfg.scene.num_envs = len(motion_files(motion_path))
     cfg.terminations.pop("time_out", None)  # every clip runs to its end
     cfg.episode_length_s = 1e9
     cfg.auto_reset = False

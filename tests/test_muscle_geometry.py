@@ -1,21 +1,50 @@
-"""Torch muscle geometry vs MuJoCo: muscle lengths, velocities and forces at random poses (both models)."""
+"""Torch muscle geometry vs MuJoCo: muscle lengths, velocities and forces at random poses (every robot variant)."""
 
 import mujoco
 import numpy as np
 import pytest
 import torch
 
-from muscle_supermimic.assets.robots.mshuman700 import ModelInfo, compiled_model
-from muscle_supermimic.tasks.tracking.mdp.kinematics import MSHumanKinematics
+from muscle_supermimic.assets.robots import mshuman700, myofullbody
+from muscle_supermimic.assets.robots.model_info import ModelInfo
+from muscle_supermimic.tasks.tracking.mdp.kinematics import SkeletonKinematics
 from muscle_supermimic.tasks.tracking.mdp.muscle_geometry import MuscleGeometry
 
+MODELS = {
+    "mshuman700": lambda: mshuman700.compiled_model(),
+    "mshuman700-locked-hands": lambda: mshuman700.compiled_model(lock_hands=True),
+    "myofullbody": lambda: myofullbody.compiled_model(),
+    "myofullbody-fingers": lambda: myofullbody.compiled_model(disable_fingers=False),
+}
 
-@pytest.mark.parametrize("lock_hands", [False, True])
-def test_muscle_geometry_matches_mujoco(lock_hands):
-    m = compiled_model(lock_hands=lock_hands)
+
+def _grazing(m, d, tol=1e-5):
+    """Muscles with a site-geom-site piece whose straight segment passes within ``tol`` of the wrap surface
+    (cylinders: in their plane). There the wrap switches on or off, and MuJoCo, MuJoCo-Warp and the torch
+    code (which follows MuJoCo-Warp) differ by microns."""
+    out = np.zeros(m.nu, dtype=bool)
+    for a in range(m.nu):
+        t = m.actuator_trnid[a, 0]
+        for k in range(m.tendon_adr[t] + 1, m.tendon_adr[t] + m.tendon_num[t] - 1):
+            if m.wrap_type[k] == mujoco.mjtWrap.mjWRAP_SITE:
+                continue
+            g = m.wrap_objid[k]
+            R, c = d.geom_xmat[g].reshape(3, 3), d.geom_xpos[g]
+            p0, p1 = (R.T @ (d.site_xpos[m.wrap_objid[j]] - c) for j in (k - 1, k + 1))
+            if m.wrap_type[k] == mujoco.mjtWrap.mjWRAP_CYLINDER:
+                p0, p1 = p0[:2], p1[:2]
+            u = p1 - p0
+            closest = p0 + np.clip(-p0 @ u / (u @ u), 0, 1) * u
+            out[a] |= abs(np.linalg.norm(closest) - m.geom_size[g, 0]) < tol
+    return out
+
+
+@pytest.mark.parametrize("variant", MODELS)
+def test_muscle_geometry_matches_mujoco(variant):
+    m = MODELS[variant]()
     info = ModelInfo(m)
     geo = MuscleGeometry(m, "cpu", torch.float64)
-    kin = MSHumanKinematics(("pelvis",), "cpu", m, torch.float64)
+    kin = SkeletonKinematics(("pelvis",), "cpu", m, torch.float64)
     rng = np.random.default_rng(0)
     d = mujoco.MjData(m)
     n, wrapped = 16, 0
@@ -33,9 +62,12 @@ def test_muscle_geometry_matches_mujoco(lock_hands):
         d.qvel[6:] = qdf[i].numpy()
         d.act[:] = act[i].numpy()
         mujoco.mj_forward(m, d)
-        np.testing.assert_allclose(L[i].numpy(), d.actuator_length, atol=1e-9, rtol=0)
-        np.testing.assert_allclose(Ld[i].numpy(), d.actuator_velocity, atol=1e-8, rtol=0)
-        np.testing.assert_allclose(F[i].numpy(), d.actuator_force, atol=1e-6, rtol=1e-8)
+        graze = _grazing(m, d)
+        ok = ~graze
+        np.testing.assert_allclose(L[i].numpy()[ok], d.actuator_length[ok], atol=1e-9, rtol=0)
+        np.testing.assert_allclose(Ld[i].numpy()[ok], d.actuator_velocity[ok], atol=1e-8, rtol=0)
+        np.testing.assert_allclose(F[i].numpy()[ok], d.actuator_force[ok], atol=1e-6, rtol=1e-8)
+        np.testing.assert_allclose(L[i].numpy()[graze], d.actuator_length[graze], atol=1e-5, rtol=0)
         wrapped += int((d.wrap_xpos.reshape(-1, 6)[:, 3:].any(-1)).sum())
     assert wrapped > 0  # the poses exercise the wraps
     # gradients exist and are finite

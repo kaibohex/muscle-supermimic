@@ -4,7 +4,8 @@ Checks that the simulator side (mjlab managers) and the imagination side (analyt
 reset states, muscle activations, rewards, the policy observation history and the goal. Then runs a
 few tiny training iterations end to end and round-trips a checkpoint.
 
-Needs a clip: ``data/motions/walk.npz`` (see README), otherwise the module is skipped.
+Needs a clip per robot (see README): ``data/motions/walk.npz`` for MS-Human-700 and
+``data/myofullbody/walk.npz`` for MyoFullBody; a task without its clip is skipped.
 """
 
 import os
@@ -13,12 +14,15 @@ from dataclasses import asdict
 import pytest
 import torch
 
-MOTION = os.path.join(os.path.dirname(__file__), "..", "data", "motions", "walk.npz")
-TASKS = ["Mjlab-SuperMimic-Flat-MS-Human-700", "Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands"]
-pytestmark = pytest.mark.skipif(not os.path.exists(MOTION), reason="no test clip at data/motions/walk.npz")
+DATA = os.path.join(os.path.dirname(__file__), "..", "data")
+MOTIONS = {
+    "Mjlab-SuperMimic-Flat-MS-Human-700": os.path.join(DATA, "motions", "walk.npz"),
+    "Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands": os.path.join(DATA, "motions", "walk.npz"),
+    "Mjlab-SuperMimic-Flat-MyoFullBody": os.path.join(DATA, "myofullbody", "walk.npz"),
+}
 
 
-@pytest.fixture(scope="module", params=TASKS)
+@pytest.fixture(scope="module", params=list(MOTIONS))
 def setup(request):
     import mjlab.tasks  # noqa: F401
     from mjlab.envs import ManagerBasedRlEnv
@@ -26,9 +30,11 @@ def setup(request):
     from mjlab.tasks.registry import load_env_cfg, load_rl_cfg, load_runner_cls
 
     TASK = request.param
+    if not os.path.exists(MOTIONS[TASK]):
+        pytest.skip(f"no test clip at {MOTIONS[TASK]}")
     torch.manual_seed(0)
     cfg = load_env_cfg(TASK)
-    cfg.commands["motion"].motion_file = MOTION
+    cfg.commands["motion"].motion_file = MOTIONS[TASK]
     cfg.commands["motion"].sampling_mode = "start"  # deterministic resets, far from the clip end
     cfg.scene.num_envs = 2
     env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=cfg, device="cpu"))
@@ -95,7 +101,7 @@ def test_deviation_terminations(setup):
 
     _, runner = setup
     cmd, h = runner.cmd, runner.heads
-    assert h.kin.body_names[0] == "pelvis" and h.kin.tracked_idx[0] == 0
+    assert h.kin.tracked_on_root[0] and not any(h.kin.tracked_on_root[1:])  # the main site (pelvis), rigid with the root
     f = torch.arange(0, 200, 25)
     p, R, v, w, q, qd = cmd.motion.ref_state(f)
     act, touch = torch.zeros(len(f), cmd.info.num_muscles), torch.zeros(len(f), 4)
