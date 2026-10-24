@@ -5,8 +5,11 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
-# motion data (fetched / converted locally) and training runs
-data/
+# motion data (fetched / converted locally) and training runs; MuscleMimic's clip lists stay tracked
+data/*
+!data/musclemimic/
+data/musclemimic/*
+!data/musclemimic/*.txt
 logs/
 *.pt
 *.npz

@@ -14,7 +14,8 @@ Port of supermimic_vibed's ``MotionLib`` (github.com/zita-ch/supermimic_vibed, M
   (``MyoFullBody/gmr/KIT/<subject>/<clip>.npz``).
 
 Coupled joints in a clip are ignored (they follow from the independent ones). A directory is searched
-recursively; its clips are named by their path relative to it.
+recursively, and a ``.txt`` file lists clips (see :func:`motion_files`); clips are named by their path
+relative to the directory they share.
 """
 
 from __future__ import annotations
@@ -37,8 +38,19 @@ QPOS_WIDTH = {int(mujoco.mjtJoint.mjJNT_FREE): 7, int(mujoco.mjtJoint.mjJNT_BALL
 
 
 def motion_files(path: str) -> list[str]:
-    """The clip itself, or every ``.npz`` under the directory, sorted."""
-    return sorted(glob.glob(os.path.join(path, "**", "*.npz"), recursive=True)) if os.path.isdir(path) else [path]
+    """The clip itself, every ``.npz`` under the directory (sorted), or the clips a ``.txt`` list names, one
+    path per line relative to the list's directory (``#`` starts a comment)."""
+    if os.path.isdir(path):
+        return sorted(glob.glob(os.path.join(path, "**", "*.npz"), recursive=True))
+    if not path.endswith(".txt"):
+        return [path]
+    with open(path) as f:
+        lines = [line.split("#", 1)[0].strip() for line in f]
+    files = [os.path.join(os.path.dirname(path), line) for line in lines if line]
+    missing = [f for f in files if not os.path.isfile(f)]
+    if missing:
+        raise FileNotFoundError(f"{path}: {len(missing)} of {len(files)} listed clips missing, e.g. {missing[:3]}")
+    return files
 
 
 def load_clip(path: str, info: ModelInfo, R_off: np.ndarray) -> tuple[float, np.ndarray, np.ndarray, np.ndarray]:

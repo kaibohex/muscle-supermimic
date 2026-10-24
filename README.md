@@ -49,8 +49,9 @@ uv run pytest                              # CPU, ~2 min (test_env.py needs the 
 
 ## Motion data
 
-A clip is one `.npz`; a directory of them (searched recursively, clips named by their relative path)
-is a motion library. Three formats are read:
+A clip is one `.npz`; a directory of them (searched recursively) or a `.txt` list of them (one path
+per line, relative to the list's directory; `#` comments) is a motion library, its clips named by their
+path relative to the directory they share. Three formats are read:
 
 * **canonical** (what `ms-convert-motion` writes): `fps`, `root_pos` (T,3) pelvis origin in the world
   [m], `root_quat` (T,4) wxyz of the *canonical root frame* (x forward, y left, z up; identity =
@@ -89,7 +90,10 @@ uv run ms-convert-motion data/msgym/walking_gait.npz data/motions/walk.npz --cyc
 
 MyoFullBody clips: MuscleMimic's GMR-retargeted AMASS motions
 ([amathislab/musclemimic-retargeted](https://huggingface.co/datasets/amathislab/musclemimic-retargeted),
-KIT: 1077 clips, 1.7 h at 100 Hz; gated, accept the terms on the page first), read straight from the download:
+KIT: 1080 clips, 1.7 h at 100 Hz; gated, accept the terms on the page first), read straight from the download.
+MuscleMimic's split ships with the repo: `data/musclemimic/kit_kinesis_train.txt` (972 clips, its
+`KIT_KINESIS_TRAINING_MOTIONS`, 1.5 h) to train on and `kit_kinesis_test.txt` (108 clips,
+`KIT_KINESIS_TESTING_MOTIONS`) to validate on, listing the download's paths:
 
 ```bash
 uvx --from huggingface_hub hf auth login
@@ -146,9 +150,9 @@ uv run ms-eval --run-dir logs/rsl_rl/mshuman700_tracking/<run> --motion-file dat
 uv run ms-eval --checkpoint logs/rsl_rl/mshuman700_tracking/<run>/model_014000.pt --motion-file data/motions --record traj.npz
 # watch a policy in mjlab's viewer
 uv run play Mjlab-SuperMimic-Flat-MS-Human-700 --checkpoint-file <model.pt> --motion-file data/motions/walk.npz
-# MyoFullBody on MuscleMimic's KIT clips (logs to logs/rsl_rl/myofullbody_tracking/)
-uv run train Mjlab-SuperMimic-Flat-MyoFullBody --env.commands.motion.motion-file data/musclemimic/MyoFullBody/gmr/KIT
-uv run ms-eval --task Mjlab-SuperMimic-Flat-MyoFullBody --run-dir logs/rsl_rl/myofullbody_tracking/<run> --motion-file data/myofullbody
+# MyoFullBody on MuscleMimic's KIT split (logs to logs/rsl_rl/myofullbody_tracking/)
+uv run train Mjlab-SuperMimic-Flat-MyoFullBody --env.commands.motion.motion-file data/musclemimic/kit_kinesis_train.txt
+uv run ms-eval --task Mjlab-SuperMimic-Flat-MyoFullBody --run-dir logs/rsl_rl/myofullbody_tracking/<run> --motion-file data/musclemimic/kit_kinesis_test.txt
 ```
 
 Runs log to `logs/rsl_rl/mshuman700_tracking/<date>/` (`train_log.csv`, tensorboard, `model_*.pt` every
@@ -237,3 +241,4 @@ By request, for now:
   lists what it derives from: MyoSuite / myo_sim (Apache-2.0) and OpenSim models, among them MoBL-ARMS
   (arm and hand), released for **non-commercial use only**.
 * MyoFullBody motions: MuscleMimic's retargeted AMASS (KIT) data, under AMASS's own license; not vendored.
+  The train/test lists in `data/musclemimic/` are MuscleMimic's (`loco_mujoco/smpl/const.py`).
