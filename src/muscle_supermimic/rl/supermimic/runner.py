@@ -145,13 +145,18 @@ class SuperMimicRunner:
         return loss, e[:, -1], (e_touch * mask).sum() / mask.sum().clamp(min=1)
 
     def _imag_step(self, S, hist, f, a_last):
+        """One imagined step from S. Also returns the critic input of S (detached), for the critic's targets: it is
+        made of the observation the policy reads here (the observation has no history), so every imagined state's
+        muscle geometry is evaluated once, as supermusclemimic collects its critic inputs during imagination."""
         ctx = StepCtx(S, f, a_last)
-        a = self.pi(self.obs_policy.assemble(hist, ctx), self.obs_goal.assemble(None, ctx))
+        obs, goal = self.obs_policy.assemble(hist, ctx), self.obs_goal.assemble(None, ctx)
+        a = self.pi(obs, goal)
+        x = torch.cat((obs, goal, self.heads.critic_extras(ctx)), -1).detach()
         act1, _ = self.muscle.step(S[6], a)
         body1, touch_n = self.wm.step(S, S[6], act1)
         S1 = body1 + (act1, self.wm.touch(touch_n))
         f1 = f + 1
-        return S1, a, self.obs_policy.push(hist, StepCtx(S1, f1, a)), f1
+        return S1, a, self.obs_policy.push(hist, StepCtx(S1, f1, a)), f1, x
 
     def _reward_term(self, S, f, a, a_prev):
         ctx = StepCtx(S, f, a, a_prev)
@@ -218,15 +223,15 @@ class SuperMimicRunner:
             hist = self.obs_policy.init_history(StepCtx(S_h, h["f"], h["last_a"]))
         set_requires_grad(self.wm, False)
         set_requires_grad(self.critic, False)
-        S0, f0, a0 = S, f, a_last
-        Ss, As, Aps, Fs = [], [], [], []
+        S0 = S
+        Ss, As, Aps, Fs, Xs = [], [], [], [], []
         step = self.imag_step
         if c.remat_imagination:  # recompute each step in the backward pass instead of keeping its activations
             step = lambda *x: torch.utils.checkpoint.checkpoint(self.imag_step, *x, use_reentrant=False)  # noqa: E731
         for _ in range(HZ):
             Aps.append(a_last)
-            S, a_last, hist, f = step(S, hist, f, a_last)
-            Ss.append(S), As.append(a_last), Fs.append(f)
+            S, a_last, hist, f, x = step(S, hist, f, a_last)
+            Ss.append(S), As.append(a_last), Fs.append(f), Xs.append(x)
         flat = lambda xs: torch.stack(xs).flatten(0, 1)  # noqa: E731  (H*B, ...)
         S_all = tuple(flat([St[i] for St in Ss]) for i in range(len(S0)))
         r, d = self.reward_term(S_all, flat(Fs), flat(As), flat(Aps))
@@ -239,7 +244,8 @@ class SuperMimicRunner:
         r_sum = (c_t * r).detach().sum(0)
         rews, dones = r.detach(), d.detach()
         if c.use_critic:
-            J = J + (c.gamma**HZ) * surv * self.value(self.critic_input(S, f, a_last))
+            x_last = self.critic_input(S, f, a_last)
+            J = J + (c.gamma**HZ) * surv * self.value(x_last)
         loss = -J.mean()
         self.opt_pi.zero_grad(set_to_none=True)
         loss.backward()
@@ -252,10 +258,7 @@ class SuperMimicRunner:
         # ---------------- critic: GAE(lambda) targets over the imagined transitions ----------------
         v_loss = torch.zeros((), device=dev)
         if c.use_critic:
-            with torch.no_grad():
-                # one imagined step at a time: the muscle geometry of all (H+1) x B states at once is large
-                X = torch.stack([self.critic_input(tuple(x.detach() for x in St), ft, at.detach())
-                                 for St, ft, at in zip([S0, *Ss], [f0, *Fs], [a0, *As], strict=True)])  # fmt: skip
+            X = torch.stack([*Xs, x_last.detach()])  # critic inputs of S_0 .. S_H, from the imagination itself
             self.critic.norm.update(X)
             with torch.no_grad():
                 V = self.value(X)
@@ -346,6 +349,9 @@ class SuperMimicRunner:
             agg["wm"].append(l), agg["wm8"].append(e8), agg["wmt"].append(et)
             if it >= c.wm_only_iters:
                 pl, vl, ir, gn, surv = self.policy_update()
+                if str(self.device).startswith("cuda"):
+                    # hand the update's cached blocks back: MuJoCo-Warp allocates outside torch's pool when it steps
+                    torch.cuda.empty_cache()
                 agg["pi"].append(pl), agg["v"].append(vl), agg["ir"].append(ir), agg["gn"].append(gn), agg["surv"].append(surv)
             self.it = it + 1
             if self.it % c.log_interval == 0:
