@@ -93,8 +93,10 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .section h3::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 .two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; align-items: start; }
 .three-col { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.four-col { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.8rem; }
 @media (max-width: 720px) {
   .two-col, .three-col { grid-template-columns: minmax(0, 1fr); }
+  .four-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ── Hero ─────────────────────────────────────────────────── */
@@ -120,7 +122,7 @@ figcaption strong { color: var(--text); margin-right: 0.3rem; }
 .video.square { aspect-ratio: 1 / 1; }
 .video.wide43 { aspect-ratio: 4 / 3; }
 .clip-label { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.35rem; }
-.clip-label code { font-size: 0.78rem; }
+.clip-label code { font-size: 0.78rem; overflow-wrap: anywhere; }
 .lead { font-size: 1.05rem; }
 
 /* ── Tables ───────────────────────────────────────────────── */
