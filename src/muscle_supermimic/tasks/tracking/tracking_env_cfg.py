@@ -1,7 +1,6 @@
 """SuperMimic motion-tracking task configuration (robot-agnostic part).
 
-SuperMimic (Liao et al., CoRL 2026) trained on MuscleMimic's MDP, as supermusclemimic does (SuperMimic on
-the MuscleMimic full-body task, where it trains stably on a muscle model): 100 Hz control (2 ms x 5),
+SuperMimic (Liao et al., CoRL 2026) trained on MuscleMimic's MDP: 100 Hz control (2 ms x 5),
 MuscleMimic's observation (full state incl. muscle length / velocity / force / excitation / activation
 and foot touch, no history), its concise goal (5 reference frames 0.2 s apart and the motion phase), its
 MimicReward with the full-body weights (no penalties), scaled by 0.1, and its deviation terminations
@@ -70,7 +69,7 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
     # Rewards
     ##
 
-    # MimicReward: weight (w_sum) and kernel (w_exp) per component, times supermusclemimic's reward_scale 0.1;
+    # MimicReward: weight (w_sum) and kernel (w_exp) per component, times a reward scale of 0.1;
     # mjlab multiplies the weights by the step dt
     scale = REWARD_SCALE / (TIMESTEP * DECIMATION)
     mimic = {"qpos": (0.1, 10.0), "qvel": (0.1, 2.0), "root_pos": (0.1, 10.0), "root_vel": (0.1, 10.0), "rpos": (0.6, 100.0),

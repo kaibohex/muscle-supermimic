@@ -45,7 +45,7 @@ def myofullbody_flat_tracking_env_cfg(play: bool = False) -> ManagerBasedRlEnvCf
     )
     # MuscleMimic's per-env MuJoCo-Warp budget for this model (self-contact pairs + 51 equality rows)
     cfg.sim.nconmax, cfg.sim.njmax = 96, 768
-    cfg.scene.num_envs = 4096  # supermusclemimic (and paper Table A.5)
+    cfg.scene.num_envs = 4096  # paper Table A.5
     if play:
         # mjlab's play loop expects auto-reset; play every clip from its first frame
         cfg.scene.num_envs = 1

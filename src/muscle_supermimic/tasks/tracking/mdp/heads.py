@@ -1,13 +1,12 @@
 """Analytic MDP heads shared by the simulator and the world model.
 
-The MDP is MuscleMimic's, as supermusclemimic runs SuperMimic on it (where SuperMimic trains stably on a
-muscle model): its observation (root height and orientation, every joint position and velocity, muscle
-length / velocity / force / excitation / activation, foot touch, and the root-relative positions, rotations
-and velocities of the mimic sites), its goal (a concise lookahead of 5 reference frames 0.2 s apart and the
-motion phase), its ``MimicReward`` and its deviation terminations. Tracked bodies stand in for MuscleMimic's
-17 mimic sites (pelvis, torso, head, shoulders, elbows, hands, hips, knees, ankles, toes): on MyoFullBody
-they are the sites' own bodies (each site at its body's origin), on MS-Human-700 17 bodies whose origins
-sit at the joints the sites mark. Quantities are computed the way MuscleMimic computes them, quirks
+The MDP is MuscleMimic's: its observation (root height and orientation, every joint position and velocity,
+muscle length / velocity / force / excitation / activation, foot touch, and the root-relative positions,
+rotations and velocities of the mimic sites), its goal (a concise lookahead of 5 reference frames 0.2 s apart
+and the motion phase), its ``MimicReward`` and its deviation terminations. Tracked bodies stand in for
+MuscleMimic's 17 mimic sites (pelvis, torso, head, shoulders, elbows, hands, hips, knees, ankles, toes): on
+MyoFullBody they are the sites' own bodies (each site at its body's origin), on MS-Human-700 17 bodies whose
+origins sit at the joints the sites mark. Quantities are computed the way MuscleMimic computes them, quirks
 included (noted where they occur).
 
 The state tuple is ``S = (p, R, v, w, q, qd, act, touch)``: root position, canonical root rotation
@@ -204,7 +203,7 @@ class TrackingHeads:
         n = 3 * (self.num_tracked - 1)
         return n + (self.lookahead - 1) * (3 + 6 + n) + 1
 
-    # ---------------- critic: privileged reference errors (supermusclemimic's critic_extras) ----------------
+    # ---------------- critic: privileged reference errors ----------------
     def critic_extras(self, ctx: StepCtx) -> torch.Tensor:
         m, f = self.motion, ctx.f
         p, R = ctx.S[0], ctx.S[1]

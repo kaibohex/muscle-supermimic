@@ -164,7 +164,7 @@ class SuperMimicRunner:
     def _imag_step(self, S, hist, f, a_last):
         """One imagined step from S. Also returns the critic input of S (detached), for the critic's targets: it is
         made of the observation the policy reads here (the observation has no history), so every imagined state's
-        muscle geometry is evaluated once, as supermusclemimic collects its critic inputs during imagination."""
+        muscle geometry is evaluated once."""
         ctx = StepCtx(S, f, a_last)
         obs, goal = self.obs_policy.assemble(hist, ctx), self.obs_goal.assemble(None, ctx)
         a = self.pi(obs, goal)
@@ -184,7 +184,7 @@ class SuperMimicRunner:
         return r, 1 - alive
 
     def _critic_input(self, S, f, a):
-        """The decoder observation, the goal and privileged reference errors (supermusclemimic's critic input)."""
+        """The critic's input: the decoder observation, the goal and privileged reference errors."""
         ctx = StepCtx(S, f, a)
         return torch.cat((self.obs_policy.assemble(None, ctx), self.obs_goal.assemble(None, ctx), self.heads.critic_extras(ctx)), -1)
 
