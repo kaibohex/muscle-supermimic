@@ -13,6 +13,7 @@ dependencies = [
 ms-convert-motion = "muscle_supermimic.tasks.tracking.scripts.convert_motion:main"
 ms-eval = "muscle_supermimic.tasks.tracking.scripts.evaluate:main"
 ms-render = "muscle_supermimic.tasks.tracking.scripts.render:main"
+ms-retarget-myofullbody = "muscle_supermimic.tasks.tracking.scripts.retarget_myofullbody:main"
 
 # mjlab imports every package of this entry-point group on `import mjlab`, so mjlab's `train` / `play`
 # CLIs list the tasks registered in muscle_supermimic.tasks.
