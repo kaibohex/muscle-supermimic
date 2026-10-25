@@ -50,9 +50,9 @@
   <div class="container narrow">
     <h2>Overview</h2>
     <p class="lead">SuperMimic trains a whole-body tracking policy by backpropagating through rollouts of one learned world model of the
-      body. muscle-supermimic runs it on musculoskeletal humanoids: <strong>MS-Human-700</strong> (700 muscles) and MuscleMimic's
+      body. muscle-supermimic runs it on musculoskeletal humanoids: <strong><a href="https://lnsgroup.cc/research/MS-Human/">MS-Human-700</a></strong> (700 muscles) and <a href="https://github.com/MyoHub/myosuite">MyoSuite</a>'s
       <strong>MyoFullBody</strong> (354 muscles), on <a href="https://github.com/mujocolab/mjlab">mjlab</a> and MuJoCo-Warp,
-      with MuscleMimic's tracking task.</p>
+      with <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a>'s tracking task.</p>
     <p>Between the policy and the skeleton sit activation dynamics, wrapping tendons and Hill-type force curves. Every observation,
       reward and termination is one analytic function, evaluated by the simulator and on imagined states alike, with a torch replica
       of MuJoCo's muscles in it. On MyoFullBody, one run trains in 10.7 hours on one GPU to a normalized return of 0.77 on MuscleMimic's 108 held-out clips, 101 of them tracked to the end.
