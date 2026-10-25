@@ -53,8 +53,11 @@ class MotionCommand(CommandTerm):
         self.geo = MuscleGeometry(m, dev)
         self.heads = TrackingHeads(self.kin, self.motion, self.geo, cfg.lookahead, cfg.stride)
         # the shared pieces of each step's terms in one compiled call: observations with muscle geometry, rewards and
-        # terminations without (eager, they launch tens of thousands of small kernels per step)
-        comp = torch.compile if cfg.compile and str(self.device).startswith("cuda") else (lambda fn: fn)
+        # terminations without (eager, they launch tens of thousands of small kernels per step). Not on sm_120 (RTX
+        # 5090): Triton 3.8 hits an LLVM assertion compiling the no-grad tendon-wrap kernels there.
+        cuda = str(self.device).startswith("cuda")
+        sm120 = cuda and torch.cuda.get_device_capability(self.device) >= (12, 0)
+        comp = torch.compile if cfg.compile and cuda and not sm120 else (lambda fn: fn)
         self._shared_obs = comp(lambda S: self.heads.precompute(S, muscles=True))
         self._shared_transition = comp(lambda S: self.heads.precompute(S, muscles=False))
         self.touch_sensor = env.scene[cfg.touch_sensor_name]
@@ -225,7 +228,8 @@ class MotionCommandCfg(MjlabMotionCommandCfg):
     init_activation: float = 0.0
     """Muscle activation written at reset (MuJoCo's reset value is 0)."""
     compile: bool = True
-    """torch.compile the kinematics and muscle geometry the terms share each step (CUDA only)."""
+    """torch.compile the kinematics and muscle geometry the terms share each step (CUDA only, and not on sm_120,
+    where Triton 3.8 fails to compile them)."""
     resampling_time_range: tuple[float, float] = (1.0e9, 1.0e9)
 
     def __post_init__(self):
