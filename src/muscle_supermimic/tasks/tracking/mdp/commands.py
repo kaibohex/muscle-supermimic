@@ -52,6 +52,11 @@ class MotionCommand(CommandTerm):
         self.muscle = MuscleActivation(m, env.cfg.decimation, env.physics_dt, dev)
         self.geo = MuscleGeometry(m, dev)
         self.heads = TrackingHeads(self.kin, self.motion, self.geo, cfg.lookahead, cfg.stride)
+        # the shared pieces of each step's terms in one compiled call: observations with muscle geometry, rewards and
+        # terminations without (eager, they launch tens of thousands of small kernels per step)
+        comp = torch.compile if cfg.compile and str(self.device).startswith("cuda") else (lambda fn: fn)
+        self._shared_obs = comp(lambda S: self.heads.precompute(S, muscles=True))
+        self._shared_transition = comp(lambda S: self.heads.precompute(S, muscles=False))
         self.touch_sensor = env.scene[cfg.touch_sensor_name]
 
         # simulator addresses (global, from the scene's model)
@@ -103,6 +108,7 @@ class MotionCommand(CommandTerm):
         if self._obs_ctx is None or self._obs_ctx_step != step:
             am = self._env.action_manager
             self._obs_ctx, self._obs_ctx_step = StepCtx(self.read_state(), self.f.clone(), am.action, am.prev_action), step
+            self._obs_ctx.cache.update(self._shared_obs(self._obs_ctx.S))
         return self._obs_ctx
 
     def transition_ctx(self) -> StepCtx:
@@ -113,6 +119,7 @@ class MotionCommand(CommandTerm):
             f1 = torch.minimum(self.f + 1, m.clip_end[m.clip_id[self.f]])
             am = self._env.action_manager
             self._ctx, self._ctx_step = StepCtx(self.read_state(), f1, am.action, am.prev_action), step
+            self._ctx.cache.update(self._shared_transition(self._ctx.S))
         return self._ctx
 
     # ------------------------------------------------------------------ reset
@@ -217,6 +224,8 @@ class MotionCommandCfg(MjlabMotionCommandCfg):
     bin_seconds: float = 1.0
     init_activation: float = 0.0
     """Muscle activation written at reset (MuJoCo's reset value is 0)."""
+    compile: bool = True
+    """torch.compile the kinematics and muscle geometry the terms share each step (CUDA only)."""
     resampling_time_range: tuple[float, float] = (1.0e9, 1.0e9)
 
     def __post_init__(self):

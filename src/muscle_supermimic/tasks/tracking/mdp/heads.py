@@ -138,6 +138,16 @@ class TrackingHeads:
             ctx.cache["pelvis"] = (Rp, torch.cat((ctx.S[2], _mv(Rp.transpose(-1, -2), ctx.S[3])), -1))
         return ctx.cache["pelvis"]
 
+    def precompute(self, S, muscles: bool = True) -> dict:
+        """The pieces the terms of a state share -- kinematics, sites, joints, the free joint and, if asked, muscle
+        geometry -- as one function for the simulator side to compile (imagination builds them inside its own
+        compiled graphs). Returns a StepCtx cache."""
+        ctx = StepCtx(S, None)
+        self.fk(ctx), self.sites(ctx), self.joints(ctx), self.pelvis(ctx)
+        if muscles:
+            self.muscles(ctx)
+        return ctx.cache
+
     # ---------------- observation pieces (MyoFullBody's observation, then the goal's state part) ----------------
     def root_pos(self, ctx: StepCtx) -> torch.Tensor:
         """Free joint position without x, y: height and quaternion (wxyz)."""
