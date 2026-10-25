@@ -143,6 +143,20 @@ def test_mimic_reward_on_reference(setup):
     torch.testing.assert_close(extras[:, 5:], torch.zeros_like(extras[:, 5:]), atol=1e-5, rtol=0)
 
 
+def test_imagined_critic_inputs(setup):
+    """The critic input the imagination step returns for the state it starts from (the critic's targets use it)
+    is the runner's critic input of that state."""
+    from muscle_supermimic.tasks.tracking.mdp.heads import StepCtx
+
+    env, runner = setup
+    cmd = runner.cmd
+    S, f, a = cmd.read_state(), cmd.f.clone(), env.unwrapped.action_manager.action.clone()
+    hist = runner.obs_policy.init_history(StepCtx(S, f, a))
+    x = runner._imag_step(S, hist, f, a)[-1]
+    assert not x.requires_grad
+    torch.testing.assert_close(x, runner._critic_input(S, f, a), atol=0, rtol=0)
+
+
 def test_runner_learns_and_round_trips(setup, tmp_path):
     env, runner = setup
     runner.log_dir = str(tmp_path)
