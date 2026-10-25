@@ -206,3 +206,18 @@ def test_target_critic_and_value_clip(setup, tmp_path):
     runner.load(ck)
     for k, v in runner.critic_targ.state_dict().items():
         torch.testing.assert_close(v, targ[k])
+
+
+def test_state_grad_clip(setup, tmp_path):
+    """With a clip level far below any gradient, every imagined trajectory is clipped at every step and logged."""
+    import csv
+
+    env, runner = setup
+    runner.cfg.state_grad_clip = 1e-12
+    try:
+        runner.log_dir = str(tmp_path)
+        runner.learn(num_learning_iterations=4)
+    finally:
+        runner.cfg.state_grad_clip = 0.0
+    rows = list(csv.DictReader(open(os.path.join(tmp_path, "train_log.csv"))))
+    assert float(rows[-1]["pi_state_clip"]) == 1.0 and float(rows[-1]["pi_gradnorm"]) > 0
