@@ -66,6 +66,23 @@ class AnalyticObsGroup:
         return torch.cat(out, -1)
 
 
+class ClipRowGrad(torch.autograd.Function):
+    """Identity on a group of (B, ...) tensors. Backward rescales each row's gradient, taken over the whole group and
+    multiplied by ``scale``, to norm <= ``max_norm``, and appends the fraction of clipped rows to ``stats``."""
+
+    @staticmethod
+    def forward(ctx, max_norm: float, scale: float, stats: list, *xs):
+        ctx.max_norm, ctx.scale, ctx.stats = max_norm, scale, stats
+        return tuple(x.view_as(x) for x in xs)
+
+    @staticmethod
+    def backward(ctx, *gs):
+        norm = ctx.scale * sum(g.flatten(1).square().sum(-1) for g in gs).sqrt()
+        k = (ctx.max_norm / norm.clamp(min=1e-30)).clamp(max=1.0)
+        ctx.stats.append((k < 1).float().mean())
+        return (None, None, None) + tuple(g * k.view(-1, *(1,) * (g.dim() - 1)) for g in gs)
+
+
 class SuperMimicRunner:
     def __init__(self, env, train_cfg: dict, log_dir: str | None = None, device: str = "cpu", **kwargs):
         names = {f.name for f in fields(SuperMimicRunnerCfg)}
@@ -230,9 +247,16 @@ class SuperMimicRunner:
         step = self.imag_step
         if c.remat_imagination:  # recompute each step in the backward pass instead of keeping its activations
             step = lambda *x: torch.utils.checkpoint.checkpoint(self.imag_step, *x, use_reentrant=False)  # noqa: E731
+        clipped = []  # per imagined step (filled by the backward pass): fraction of trajectories clipped
         for t in range(HZ):
             Aps.append(a_last)
             S, a_last, hist, f, x = step(S, hist, f, a_last)
+            if c.state_grad_clip > 0:
+                live = [i for i, xh in enumerate(hist) if xh is not None]
+                out = ClipRowGrad.apply(c.state_grad_clip, B, clipped, *S, a_last, *(hist[i] for i in live))
+                S, a_last, hist = out[: len(S)], out[len(S)], list(hist)
+                for i, xh in zip(live, out[len(S) + 1 :], strict=True):
+                    hist[i] = xh
             Ss.append(S), As.append(a_last), Fs.append(f)
             if c.use_critic:
                 X[t] = x
@@ -258,6 +282,7 @@ class SuperMimicRunner:
         nn.utils.clip_grad_value_(self.pi.parameters(), c.policy_grad_clip_value)
         if torch.isfinite(gn):
             self.opt_pi.step()
+        clip_frac = torch.stack(clipped).mean() if clipped else torch.zeros((), device=dev)
         set_requires_grad(self.wm, True)
         set_requires_grad(self.critic, True)
         # ---------------- critic: GAE(lambda) targets over the imagined transitions ----------------
@@ -287,7 +312,8 @@ class SuperMimicRunner:
                     nn.utils.clip_grad_norm_(self.critic.parameters(), c.grad_clip)
                     self.opt_v.step()
             self.update_critic_targ()
-        return loss.detach(), v_loss.detach(), (r_sum / HZ / self.max_step_reward).mean(), gn.detach(), surv.mean().detach()
+        return (loss.detach(), v_loss.detach(), (r_sum / HZ / self.max_step_reward).mean(), gn.detach(), surv.mean().detach(),
+                clip_frac)  # fmt: skip
 
     # ------------------------------------------------------------------ simulator
     @torch.no_grad()
@@ -339,7 +365,7 @@ class SuperMimicRunner:
         stats = {"r": [], "r_terms": [], "ep_len": [], "ep_ret": [], "term": [], "done": []}
         self.collect(max(c.warmup_steps, c.wm_window + self.hist + 1), stats)
         t_start, t_log, step_acc = time.time() - self.wall_offset, time.time(), 0.0
-        agg = {"wm": [], "wm8": [], "wmt": [], "pi": [], "v": [], "ir": [], "gn": [], "surv": []}
+        agg = {"wm": [], "wm8": [], "wmt": [], "pi": [], "v": [], "ir": [], "gn": [], "surv": [], "clip": []}
         start_it = self.it
         for it in range(start_it, start_it + num_learning_iterations):
             lr = self.lr_at(it)
@@ -354,11 +380,12 @@ class SuperMimicRunner:
                 l, e8, et = self.wm_update()
             agg["wm"].append(l), agg["wm8"].append(e8), agg["wmt"].append(et)
             if it >= c.wm_only_iters:
-                pl, vl, ir, gn, surv = self.policy_update()
+                pl, vl, ir, gn, surv, clip = self.policy_update()
                 if str(self.device).startswith("cuda"):
                     # hand the update's cached blocks back: MuJoCo-Warp allocates outside torch's pool when it steps
                     torch.cuda.empty_cache()
                 agg["pi"].append(pl), agg["v"].append(vl), agg["ir"].append(ir), agg["gn"].append(gn), agg["surv"].append(surv)
+                agg["clip"].append(clip)
             self.it = it + 1
             if self.it % c.log_interval == 0:
                 mean = lambda x: float(sum(float(v) for v in x) / max(len(x), 1))  # noqa: E731
@@ -372,12 +399,15 @@ class SuperMimicRunner:
                        "ep_len": mean(stats["ep_len"]), "ep_ret_norm": mean(stats["ep_ret"]), "term_frac": term_frac,
                        "it_per_s": ips, "lr": lr,
                        "gpu_mem_gb": torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0.0}  # fmt: skip
+                if c.state_grad_clip > 0:
+                    row["pi_state_clip"] = mean(agg["clip"])
                 if stats["r_terms"]:
                     terms = torch.stack(stats["r_terms"]).mean(0).tolist()
                     row.update({f"rew_{n}": float(v) for n, v in zip(self.reward_names, terms, strict=True)})
                 logger(row)
+                clip_s = f" clip {row['pi_state_clip']:.3f}" if "pi_state_clip" in row else ""
                 print(f"it {self.it} | {wall_h:.3f} h | wm {row['wm_loss']:.4f} e8 {row['wm_err8']:.4f} | pi {row['pi_loss']:.3f} "
-                      f"v {row['v_loss']:.4f} imag_r {row['imag_rew']:.3f} surv {row['imag_survival']:.3f} | sim_r {row['sim_rew']:.3f} "
+                      f"v {row['v_loss']:.4f} imag_r {row['imag_rew']:.3f} surv {row['imag_survival']:.3f}{clip_s} | sim_r {row['sim_rew']:.3f} "
                       f"ep_len {row['ep_len']:.1f} ep_ret {row['ep_ret_norm']:.3f} term {term_frac:.2f} | {ips:.2f} it/s {row['gpu_mem_gb']:.1f} GB", flush=True)  # fmt: skip
                 stats = {k: [] for k in stats}
                 agg = {k: [] for k in agg}
