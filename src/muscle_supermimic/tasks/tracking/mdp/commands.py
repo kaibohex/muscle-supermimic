@@ -76,6 +76,7 @@ class MotionCommand(CommandTerm):
         self.bin_G = torch.zeros(nb, device=dev)
         self.bin_w_avg = torch.full((nb,), 1.0 / nb, device=dev)
         self._ctx_step, self._ctx = -1, None
+        self._obs_ctx_step, self._obs_ctx = -1, None
 
     # ------------------------------------------------------------------ state
     @property
@@ -96,8 +97,13 @@ class MotionCommand(CommandTerm):
                 touch)  # fmt: skip
 
     def obs_ctx(self) -> StepCtx:
-        am = self._env.action_manager
-        return StepCtx(self.read_state(), self.f, am.action, am.prev_action)
+        """The current state against frame f, cached for all observation terms of one step: they share its
+        kinematics and muscle geometry. A reset or the command update (which move f or the state) drop it."""
+        step = self._env.common_step_counter
+        if self._obs_ctx is None or self._obs_ctx_step != step:
+            am = self._env.action_manager
+            self._obs_ctx, self._obs_ctx_step = StepCtx(self.read_state(), self.f.clone(), am.action, am.prev_action), step
+        return self._obs_ctx
 
     def transition_ctx(self) -> StepCtx:
         """The post-step state against frame f + 1, cached for all reward/termination terms of one step."""
@@ -163,6 +169,7 @@ class MotionCommand(CommandTerm):
         self._env.sim.data.act[env_ids[:, None], self._act_adr] = self.cfg.init_activation
         self.f[env_ids] = frames
         self._just_reset[env_ids] = True
+        self._obs_ctx = None
 
     # ------------------------------------------------------------------ step
     def _update_command(self, env_ids: torch.Tensor | None) -> None:
@@ -177,6 +184,7 @@ class MotionCommand(CommandTerm):
         self.ep_ret += r
         self.f += stepped.long()
         self._just_reset[:] = False
+        self._obs_ctx = None
 
     def _update_metrics(self) -> None:
         pass

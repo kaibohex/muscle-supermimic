@@ -92,6 +92,23 @@ def test_sim_matches_analytic_heads(setup):
     assert m.num_frames > 0
 
 
+def test_observation_follows_resets(setup):
+    """Observation terms share one context per step: a reset within the step must not reuse the old one."""
+    from muscle_supermimic.tasks.tracking.mdp.heads import StepCtx
+
+    env, runner = setup
+    u, cmd = env.unwrapped, runner.cmd
+    u.reset()
+    for _ in range(3):
+        env.step(torch.full((2, cmd.info.num_muscles), 0.1))
+    stale = runner.obs_policy.assemble(None, cmd.obs_ctx())
+    obs, _ = u.reset(env_ids=torch.tensor([0], device=u.device))
+    am = u.action_manager
+    fresh = runner.obs_policy.assemble(None, StepCtx(cmd.read_state(), cmd.f.clone(), am.action, am.prev_action))
+    torch.testing.assert_close(obs["policy"], fresh, atol=1e-5, rtol=1e-5)
+    assert not torch.allclose(obs["policy"][0], stale[0])  # env 0 did move to its reset state
+
+
 def test_deviation_terminations(setup):
     """MuscleMimic's deviation checks: zero on the reference, each fires on its own perturbation."""
     import math
