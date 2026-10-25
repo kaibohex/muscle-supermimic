@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>muscle-supermimic</title>
+  <meta name="description" content="SuperMimic, motion tracking by backpropagation through one learned world model, on whole-body musculoskeletal humanoids: MS-Human-700 and MyoFullBody, on mjlab / MuJoCo-Warp." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M9 4c4 6 4 18 0 24M16 3c3 7 3 19 0 26M23 4c-4 6-4 18 0 24' stroke='%232a78d6' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="static/css/style.css" />
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <h1 class="title">muscle-supermimic</h1>
+    <p class="subtitle">Whole-body motion tracking for musculoskeletal humanoids with one differentiable world model</p>
+    <div class="link-buttons">
+      <a class="btn" href="https://github.com/kaibohex/muscle-supermimic" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        Code</a>
+      <a class="btn" href="https://github.com/kaibohex/muscle-supermimic/tree/master/docs" target="_blank" rel="noopener">Documentation</a>
+      <a class="btn" href="https://arxiv.org/abs/2610.28480" target="_blank" rel="noopener">SuperMimic paper</a>
+      <a class="btn" href="https://github.com/amathislab/musclemimic" target="_blank" rel="noopener">MuscleMimic</a>
+    </div>
+    <div class="venue">Open-source research code · 2026</div>
+  </div>
+</header>
+
+<main>
+
+<section class="section teaser" style="padding-bottom: 0.5rem;">
+  <div class="container medium">
+    <figure>
+      <video class="video" src="static/videos/teaser.mp4" poster="static/videos/teaser_poster.jpg" muted loop playsinline preload="metadata" data-autoplay
+        aria-label="MyoFullBody, with its muscles drawn in red, tracks three motion-capture clips beside the translucent reference: turning left, walking forward, walking backward"></video>
+      <figcaption><strong>MyoFullBody tracking three training clips.</strong>Turning left, walking forward and walking backward,
+        from MuscleMimic's KIT set. The solid body with its 354 muscles in red is the simulation, driven by the policy, which sets
+        every muscle's excitation 100 times a second; the translucent blue skeleton is the reference motion. All three clips are
+        tracked to the end, at a normalized return of 0.79.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section" id="overview">
+  <div class="container narrow">
+    <h2>Overview</h2>
+    <p class="lead">SuperMimic trains a whole-body tracking policy by backpropagating through rollouts of one learned world model of the
+      body. muscle-supermimic runs it on musculoskeletal humanoids: <strong>MS-Human-700</strong> (700 muscles) and MuscleMimic's
+      <strong>MyoFullBody</strong> (354 muscles), on <a href="https://github.com/mujocolab/mjlab">mjlab</a> and MuJoCo-Warp,
+      with MuscleMimic's tracking task.</p>
+    <p>Between the policy and the skeleton sit activation dynamics, wrapping tendons and Hill-type force curves. Every observation,
+      reward and termination is one analytic function, evaluated by the simulator and on imagined states alike, with a torch replica
+      of MuJoCo's muscles in it. On MyoFullBody, one run trains in 10.7 hours on one GPU to a normalized return of 0.77 on MuscleMimic's 108 held-out clips, 101 of them tracked to the end.
+      On these bodies the policy gradient through imagination can also explode, and we found where: in a closed loop through the
+      policy's muscle-velocity observation.</p>
+  </div>
+</section>
+
+<section class="section" id="bodies">
+  <div class="container medium">
+    <h2>Two muscle-driven bodies</h2>
+    <div class="two-col">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th></th><th>MS-Human-700</th><th>MyoFullBody</th></tr></thead>
+          <tbody>
+            <tr><th>Model</th><td><a href="https://github.com/LNSGroup/MS-Human-700">LNSGroup</a></td><td><a href="https://github.com/amathislab/musclemimic">MuscleMimic</a>, <code>musclemimic-models</code> 1.0.6</td></tr>
+            <tr><th>Joint DoF</th><td>37 + free root (33 with locked hands)</td><td>31 + free root (fingers disabled)</td></tr>
+            <tr><th>Muscles</th><td>700 (694)</td><td>354</td></tr>
+            <tr><th>Coupled joints</th><td>42 (38)</td><td>51</td></tr>
+            <tr><th>Mass</th><td>60.2 kg</td><td>84.3 kg</td></tr>
+            <tr><th>Σ max isometric force</th><td>349 × body weight*</td><td>163 × body weight</td></tr>
+            <tr><th>Self-contacts</th><td>off</td><td>75 pairs, as in MuscleMimic</td></tr>
+          </tbody>
+        </table>
+        <p class="muted" style="font-size: 0.8rem; margin-top: 0.5rem;">* locked hands, 694 muscles. Coupled joints (knee
+          translations, patella, shoulder girdle) follow independent ones through <code>&lt;equality&gt;</code> polynomials,
+          reproduced exactly by the differentiable kinematics.</p>
+      </div>
+      <figure>
+        <video class="video wide43" src="static/videos/retarget_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay
+          aria-label="The same turning clip on MyoFullBody (left, tan) and on MS-Human-700 (right, white), seen from behind"></video>
+        <figcaption><strong>One clip, two bodies.</strong>MuscleMimic's retargeted KIT motion on MyoFullBody (left) and, retargeted
+          from it by <code>ms-retarget-myofullbody</code>, on MS-Human-700 (right). The 27 leg and arm angles carry over exactly,
+          spine and wrist flexion are fitted through the differentiable kinematics, and each clip is lowered by 0.74 cm so that the
+          feet touch the ground.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="method">
+  <div class="container medium">
+    <h2>One MDP, simulated and imagined</h2>
+    <p>The simulator collects transitions with the current policy plus exploration noise; a world model learns the body's next
+      state from them. The policy then improves through 32 imagined steps: every step it reads its observation, sets the
+      excitations, the activations follow MuJoCo's own activation dynamics, and the world model moves the body. Rewards,
+      terminations and observations on imagined states come from the same functions that label the simulator's transitions,
+      including muscle length, velocity and force from a torch replica of MuJoCo's spatial tendons (equal to MuJoCo's to
+      10⁻⁹ / 10⁻⁸ / 10⁻⁶). The gradient of the return, with a critic's value at the last step, flows back through all of it.</p>
+    <figure class="diagram" style="margin-top: 1.2rem;">
+      <div class="table-wrap">
+        <svg viewBox="0 0 860 300" style="min-width: 620px;" role="img" aria-label="Collection: the policy drives the simulator, transitions go to a replay buffer, the world model is fit on them. Improvement: a loop of state, observation, policy, activation dynamics and world model over 32 imagined steps, with analytic rewards and a critic at the end; the gradient flows back through the loop.">
+          <defs>
+            <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow" d="M0,0L10,5L0,10z"/></marker>
+            <marker id="arl" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="arrow loop" d="M0,0L10,5L0,10z"/></marker>
+          </defs>
+          <text class="head" x="20" y="22">COLLECT</text>
+          <rect class="box" x="20" y="34" width="190" height="56" rx="4"/>
+          <text x="115" y="58" text-anchor="middle">Simulator</text>
+          <text class="small" x="115" y="76" text-anchor="middle">MuJoCo-Warp · 4096 envs</text>
+          <rect class="box" x="255" y="34" width="170" height="56" rx="4"/>
+          <text x="340" y="58" text-anchor="middle">Replay buffer</text>
+          <text class="small" x="340" y="76" text-anchor="middle">labelled by the env's terms</text>
+          <rect class="box" x="470" y="34" width="190" height="56" rx="4"/>
+          <text x="565" y="58" text-anchor="middle">World-model fit</text>
+          <text class="small" x="565" y="76" text-anchor="middle">8-step rollout loss</text>
+          <path class="edge" d="M210,62H253" marker-end="url(#ar)"/>
+          <path class="edge" d="M425,62H468" marker-end="url(#ar)"/>
+
+          <text class="head" x="20" y="140">IMPROVE · 32 IMAGINED STEPS</text>
+          <rect class="box" x="20" y="152" width="120" height="60" rx="4"/>
+          <text x="80" y="177" text-anchor="middle">state sₜ</text>
+          <text class="small" x="80" y="195" text-anchor="middle">body + activations</text>
+          <rect class="box exact" x="180" y="152" width="150" height="60" rx="4"/>
+          <text x="255" y="177" text-anchor="middle">observation oₜ</text>
+          <text class="small" x="255" y="195" text-anchor="middle">muscle l, v, F: exact</text>
+          <rect class="box accent" x="370" y="152" width="120" height="60" rx="4"/>
+          <text x="430" y="177" text-anchor="middle">policy π</text>
+          <text class="small" x="430" y="195" text-anchor="middle">excitations eₜ</text>
+          <rect class="box exact" x="530" y="152" width="140" height="60" rx="4"/>
+          <text x="600" y="177" text-anchor="middle">activation dyn.</text>
+          <text class="small" x="600" y="195" text-anchor="middle">MuJoCo's, exact</text>
+          <rect class="box" x="710" y="152" width="130" height="60" rx="4"/>
+          <text x="775" y="177" text-anchor="middle">world model</text>
+          <text class="small" x="775" y="195" text-anchor="middle">body sₜ₊₁, foot touch</text>
+          <path class="edge loop" d="M140,182H178" marker-end="url(#arl)"/>
+          <path class="edge loop" d="M330,182H368" marker-end="url(#arl)"/>
+          <path class="edge loop" d="M490,182H528" marker-end="url(#arl)"/>
+          <path class="edge loop" d="M670,182H708" marker-end="url(#arl)"/>
+          <path class="edge loop" d="M775,212V240H80V214" marker-end="url(#arl)"/>
+          <text class="small" x="430" y="256" text-anchor="middle">t → t + 1; the gradient of the return flows back along this loop</text>
+          <path class="edge" d="M565,90V118H775V150" marker-end="url(#ar)"/>
+          <text class="small" x="672" y="112" text-anchor="middle">same network</text>
+          <text class="small" x="20" y="286">Reward rₜ and soft survival: the env's own functions of sₜ · bootstrap: critic V(s₃₂) · shaded: computed exactly, not learned</text>
+        </svg>
+      </div>
+    </figure>
+    <p style="margin-top: 1rem;">The task is MuscleMimic's: 100 Hz control, an observation of the full body state with muscle
+      length, velocity, force, excitation and activation and four foot-touch values, a goal of the reference's next frames, the
+      MimicReward on 17 tracked sites, and terminations when the body strays more than 1 m or 1 rad from the reference. No
+      randomization yet. Details: <a href="https://github.com/kaibohex/muscle-supermimic/blob/master/docs/mdp.md">MDP</a>,
+      <a href="https://github.com/kaibohex/muscle-supermimic/blob/master/docs/training.md">training</a>.</p>
+  </div>
+</section>
+
+<section class="section" id="myofullbody">
+  <div class="container medium">
+    <h2>MyoFullBody</h2>
+    <p>One run on MuscleMimic's KIT split, 972 training clips (1.5 h of motion), 4096 parallel environments, MuscleMimic's solver
+      settings (Euler, 100 / 50 iterations), on one RTX 5090. Tracking took off around iteration 3500; the checkpoint below is
+      iteration 12000, after 10.7 hours. Evaluation runs every clip once from its first frame without exploration noise.</p>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Training episode length, iteration 12000</div><div class="stat-value">268<small>steps (2.7 s)</small></div></div>
+      <div class="stat"><div class="stat-label">Training episodes ending in a failure</div><div class="stat-value">7 %</div></div>
+      <div class="stat"><div class="stat-label">Normalized return, 3 training clips</div><div class="stat-value">0.79<small>0 failed</small></div></div>
+      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips</div><div class="stat-value" id="test-return">0.77<small>7 failed</small></div></div>
+    </div>
+    <div class="two-col">
+      <div class="chart" id="chart-eplen">
+        <div class="chart-title">Mean training episode length</div>
+        <div class="chart-sub">steps of 10 ms, per 50 iterations</div>
+      </div>
+      <div class="chart" id="chart-fail">
+        <div class="chart-title">Training episodes ending in a failure</div>
+        <div class="chart-sub">% of finished episodes, per 50 iterations</div>
+      </div>
+    </div>
+    <h3>Training clips</h3>
+    <div class="three-col">
+      <figure><video class="video square" src="static/videos/train_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning left"></video>
+        <div class="clip-label">Turn left · <code>359/turn_left05</code></div></figure>
+      <figure><video class="video square" src="static/videos/train_walk_forward05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking forward"></video>
+        <div class="clip-label">Walk forward · <code>11/WalkingStraightForwards05</code></div></figure>
+      <figure><video class="video square" src="static/videos/train_walk_backward04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking backward"></video>
+        <div class="clip-label">Walk backward · <code>7/WalkingStraightBackwards04</code></div></figure>
+    </div>
+    <h3>Held-out clips</h3>
+    <p>On MuscleMimic's 108 test clips, never seen in training, the normalized return is 0.77 and 101 clips are tracked to the
+      end. The 7 failures are three clockwise circles, two right turns, one walk and one walk along a handrail beam. Shown: for
+      three kinds of motion, the first test clip in the list that was tracked to the end, not picked by score. In the run, the
+      body falls behind the reference without failing.</p>
+    <div class="three-col" style="margin-top: 1rem;">
+      <figure><video class="video square" src="static/videos/test_walking_run06.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Running"></video>
+        <div class="clip-label">Run · <code>348/walking_run06</code></div></figure>
+      <figure><video class="video square" src="static/videos/test_turn_right09.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning right"></video>
+        <div class="clip-label">Turn right · <code>317/turn_right09</code></div></figure>
+      <figure><video class="video square" src="static/videos/test_ccw_circle04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking a counter-clockwise circle"></video>
+        <div class="clip-label">Counter-clockwise circle · <code>4/WalkInCounterClockwiseCircle04</code></div></figure>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="mshuman">
+  <div class="container medium">
+    <h2>MS-Human-700</h2>
+    <div class="note"><strong>Training in progress.</strong>MS-Human-700 with locked hands (694 muscles) is training on the same
+      972 clips, retargeted to it. Results will appear here when the runs finish.</div>
+  </div>
+</section>
+
+<section class="section" id="gradient">
+  <div class="container medium">
+    <h2>Where the policy gradient explodes</h2>
+    <p>The policy's gradient passes through 32 steps of world model and policy. Without a remedy, on MS-Human-700 its norm before
+      clipping reached 10²–10⁵ in most updates (a run that learns sits near 2), and the run never took off. Measured on a checkpoint
+      of that run, nearly all of it comes from 1 % of the imagined trajectories, spread over 208 different clips. Going back
+      through the steps, the gradient on those trajectories' state grows about 1.3× per step; on the other 99 % it barely grows.</p>
+    <div class="chart" id="chart-growth" style="margin-top: 1rem;">
+      <div class="chart-title">Gradient of a trajectory's return with respect to its imagined state</div>
+      <div class="chart-sub">median norm per trajectory, 8 × 4096 imagined trajectories (MS-Human-700, unclipped run, iteration 6000)</div>
+      <div class="chart-legend"></div>
+    </div>
+    <p style="margin-top: 1.2rem;">The world model alone is stable: cutting the gradient through the policy's whole observation
+      brings the norm down to 1.8. Cutting it through one observation term at a time finds the loop: muscle velocity alone takes
+      it from 49K to 16. Muscle velocity feeds the policy, the policy sets the activations, the world model turns them into joint
+      velocity, which is muscle velocity again; on some trajectories the gain around this loop exceeds 1. MS-Human-700 has twice MyoFullBody's
+      muscles, with smaller velocities (median standard deviation 0.022 against 0.053 m/s), and its policy's total gain on them
+      comes out about 2.8 times MyoFullBody's.</p>
+    <div class="chart" id="chart-ablation" style="margin-top: 1rem;">
+      <div class="chart-title">Policy-gradient norm with the gradient through one observation term cut</div>
+      <div class="chart-sub">same checkpoint, median of 3 batches; blue: the muscle-state terms of the loop</div>
+    </div>
+    <p style="margin-top: 1.2rem;">MyoFullBody is not immune: the run above collapsed the same way at iteration 12700, when its
+      gradient norm jumped from about 1 to 10³–10⁴ and its episodes fell from 280 to about 110 steps.</p>
+    <div class="two-col" style="margin-top: 1rem;">
+      <div class="chart" id="chart-collapse-len">
+        <div class="chart-title">MyoFullBody episode length</div>
+        <div class="chart-sub">steps, iterations 11k–14k</div>
+      </div>
+      <div class="chart" id="chart-collapse-grad">
+        <div class="chart-title">MyoFullBody policy-gradient norm</div>
+        <div class="chart-sub">before clipping, iterations 11k–14k</div>
+      </div>
+    </div>
+    <div class="note" style="margin-top: 1.2rem;"><strong>Being evaluated.</strong>Clipping, at every imagined step, each
+      trajectory's gradient on the state it carries forward bounds this growth without removing the loop. Runs with it on
+      MS-Human-700 and MyoFullBody are training; results will follow.</div>
+  </div>
+</section>
+
+<section class="section" id="start">
+  <div class="container narrow">
+    <h2>Get started</h2>
+<pre><code>git clone --recursive https://github.com/kaibohex/muscle-supermimic.git
+cd muscle-supermimic &amp;&amp; uv sync
+
+# MuscleMimic's retargeted KIT clips (gated: accept the terms on the dataset page first)
+uvx --from huggingface_hub hf download amathislab/musclemimic-retargeted --repo-type dataset \
+    --include "MyoFullBody/gmr/KIT/*" --local-dir data/musclemimic
+
+uv run train Mjlab-SuperMimic-Flat-MyoFullBody \
+    --env.commands.motion.motion-file data/musclemimic/kit_kinesis_train.txt \
+    --env.sim.mujoco.integrator euler --env.sim.mujoco.iterations 100 --env.sim.mujoco.ls-iterations 50</code></pre>
+    <p style="margin-top: 0.9rem;">MS-Human-700, evaluation, rendering and memory settings: see the
+      <a href="https://github.com/kaibohex/muscle-supermimic">README</a> and
+      <a href="https://github.com/kaibohex/muscle-supermimic/tree/master/docs">docs</a>.</p>
+  </div>
+</section>
+
+<section class="section" id="citation">
+  <div class="container narrow">
+    <h2>Citation</h2>
+    <div class="bibtex">
+      <button class="copy-btn" type="button" data-target="bibtex-text">Copy</button>
+<pre><code id="bibtex-text">@misc{muscle_supermimic_2026,
+  title        = {muscle-supermimic: Whole-Body Motion Tracking for Musculoskeletal
+                  Humanoids with One Differentiable World Model},
+  author       = {{The muscle-supermimic Authors}},
+  year         = {2026},
+  howpublished = {\url{https://github.com/kaibohex/muscle-supermimic}}
+}</code></pre>
+    </div>
+    <p style="margin-top: 0.9rem;">Please also cite the works it builds on: SuperMimic
+      (<a href="https://arxiv.org/abs/2610.28480">arXiv:2610.28480</a>), MuscleMimic
+      (<a href="https://arxiv.org/abs/2603.25544">arXiv:2603.25544</a>) and
+      <a href="https://github.com/LNSGroup/MS-Human-700">MS-Human-700</a>.</p>
+  </div>
+</section>
+
+<section class="section" id="acknowledgments">
+  <div class="container narrow">
+    <h2>Acknowledgments</h2>
+    <p>The SuperMimic implementation is ported from Chong Zhang's
+      <a href="https://github.com/zita-ch/supermimic_vibed">supermimic_vibed</a>. MyoFullBody, its tracking task and the
+      retargeted KIT motions come from <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a>; MS-Human-700 from
+      <a href="https://github.com/LNSGroup/MS-Human-700">LNSGroup</a>; the simulation framework is
+      <a href="https://github.com/mujocolab/mjlab">mjlab</a> on MuJoCo-Warp. The motions are from the KIT set of AMASS. The
+      MyoFullBody arm and hand derive from MoBL-ARMS, released for non-commercial use only.</p>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  muscle-supermimic · code under the Apache License 2.0 · page layout after
+  <a href="https://younghyopark.me/blind-proprioceptive-assembly/">Blind Precise Assembly</a>'s project page
+</footer>
+
+<script src="static/data/charts.js"></script>
+<script src="static/js/main.js"></script>
+</body>
+</html>
