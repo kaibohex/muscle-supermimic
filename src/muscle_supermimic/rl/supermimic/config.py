@@ -26,7 +26,7 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     """Updates per vectorized simulator step (2.5 sim steps per iteration)."""
     action_noise: float = 0.1
     """Exploration noise N(0, sigma^2) added to the action, i.e. the excitations, during collection, then clipped to
-    [0, 1] (as supermusclemimic does). Noise on the logits would shrink to sigma * e(1 - e) at low excitations."""
+    [0, 1]. Noise on the logits would shrink to sigma * e(1 - e) at low excitations."""
     warmup_steps: int = 64
     """Simulator steps before any update."""
 
@@ -38,7 +38,7 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     wm_only_iters: int = 500
     """World-model-only iterations at the start."""
     touch_loss_weight: float = 1.0
-    """Weight of the world model's foot-touch loss (supermusclemimic's)."""
+    """Weight of the world model's foot-touch loss."""
 
     # policy and critic
     enc_hidden: tuple[int, ...] = (2048, 1024, 512, 256)
@@ -55,8 +55,8 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     critic_minibatches: int = 4
     use_critic: bool = True
     remat_imagination: bool = True
-    """Recompute each imagined step in the backward pass (supermusclemimic's): the muscle geometry of every step
-    would otherwise stay in memory."""
+    """Recompute each imagined step in the backward pass: the muscle geometry of every step would otherwise stay in
+    memory."""
     critic_target_alpha: float = 0.0
     """Target critic for the policy's bootstrap and the lambda-return targets, V' <- alpha V' + (1 - alpha) V
     after each critic update (as in SHAC). 0 uses the online critic, as SuperMimic does."""

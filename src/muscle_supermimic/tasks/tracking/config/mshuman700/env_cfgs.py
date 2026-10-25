@@ -41,7 +41,7 @@ def mshuman700_flat_tracking_env_cfg(play: bool = False, lock_hands: bool = Fals
             reduce="netforce",
         ),
     )
-    cfg.scene.num_envs = 4096  # supermusclemimic (and paper Table A.5)
+    cfg.scene.num_envs = 4096  # paper Table A.5
     if play:
         # mjlab's play loop expects auto-reset; play every clip from its first frame
         cfg.scene.num_envs = 1

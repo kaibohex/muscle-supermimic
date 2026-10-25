@@ -71,8 +71,8 @@ def run_mlp(net: nn.Module, x: torch.Tensor) -> torch.Tensor:
 
 class WorldModel(nn.Module):
     """Deterministic body dynamics S_{t+1} = f(S_t, act_t, act_{t+1}) predicting frame-local state increments,
-    with an auxiliary head for the foot touch of S_{t+1} (as supermusclemimic: the activations before and after
-    the step are inputs, contacts are the only observation the analytic heads cannot compute)."""
+    with an auxiliary head for the foot touch of S_{t+1}. The activations before and after the step are inputs;
+    contacts are the only observation the analytic heads cannot compute."""
 
     def __init__(self, nq: int, num_muscles: int, num_touch: int, hidden=(2048, 2048, 2048)):
         super().__init__()

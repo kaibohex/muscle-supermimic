@@ -7,11 +7,10 @@ force observations of MuscleMimic can be evaluated on imagined states.
 
 Lengths are differentiable: straight segments and outside wraps through their closed forms; inside wraps
 (side site within the wrap geom, solved by Newton's method) hold the solved tangent point fixed in the geom
-frame, which is exact to first order because the path length is stationary in it (as supermusclemimic
-does). Velocities follow MuJoCo's ``ten_velocity = ten_J qvel``: every straight piece contributes the
-rate of change of its length with its end points moving with their bodies (wrap tangent points move with
-the wrap geom), the arc on the geom none. Tendon length does not depend on the root, so the root is held
-fixed at the origin.
+frame, which is exact to first order because the path length is stationary in it. Velocities follow
+MuJoCo's ``ten_velocity = ten_J qvel``: every straight piece contributes the rate of change of its length
+with its end points moving with their bodies (wrap tangent points move with the wrap geom), the arc on the
+geom none. Tendon length does not depend on the root, so the root is held fixed at the origin.
 """
 
 from __future__ import annotations
