@@ -46,7 +46,7 @@ uv run train Mjlab-SuperMimic-Flat-MyoFullBody --env.commands.motion.motion-file
 uv run ms-eval --task Mjlab-SuperMimic-Flat-MyoFullBody --run-dir logs/rsl_rl/myofullbody_tracking/<run> \
     --motion-file data/musclemimic/kit_kinesis_test.txt --device cpu --watch
 uv run ms-eval --task Mjlab-SuperMimic-Flat-MyoFullBody --checkpoint <model.pt> --motion-file <clips> --record rollout.npz
-# render a recorded rollout: the simulated body with its muscles, the reference as a translucent ghost
+# render a recorded rollout: the simulated body with its muscles, studio look, 50 fps (--ghost overlays the reference)
 uv run ms-render rollout.npz videos/
 # watch a policy in mjlab's viewer
 uv run play Mjlab-SuperMimic-Flat-MyoFullBody --checkpoint-file <model.pt> --motion-file <clip.npz>

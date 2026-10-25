@@ -6,7 +6,7 @@ muscles), on [mjlab](https://github.com/mujocolab/mjlab) / MuJoCo-Warp.
 
 <p align="center">
   <img src="docs/assets/myofullbody_turn.gif" width="420" alt="MyoFullBody tracking a turning clip">
-  <br><sub>MyoFullBody (solid, muscles in red) tracking a KIT turning clip; the reference is the translucent ghost.</sub>
+  <br><sub>MyoFullBody, its 354 muscles in red, tracking a KIT turning clip (rendered with <code>ms-render</code>).</sub>
 </p>
 
 SuperMimic trains a tracking policy by backpropagating through rollouts of a learned world model of the
