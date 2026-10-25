@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 import torch
 
-from muscle_supermimic.utils.rotations import mat_to_6d, mat_to_quat, quat_to_mat, so3_log, yaw_mat
+from muscle_supermimic.utils.rotations import mat_to_6d, mat_to_quat, mm3, mv3, quat_to_mat, so3_log, yaw_mat
 
 from .kinematics import SkeletonKinematics
 from .motion import MotionLib
@@ -62,13 +62,12 @@ def invariant_features(S) -> torch.Tensor:
     p, R, v, w, q, qd = S[:6]
     H = yaw_mat(R)
     Rt = R.transpose(-1, -2)
-    return torch.cat((p[..., 2:3], mat_to_6d(H.transpose(-1, -2) @ R), (Rt @ v.unsqueeze(-1)).squeeze(-1),
-                      (Rt @ w.unsqueeze(-1)).squeeze(-1), q, qd), -1)  # fmt: skip
+    return torch.cat((p[..., 2:3], mat_to_6d(mm3(H.transpose(-1, -2), R)), mv3(Rt, v), mv3(Rt, w), q, qd), -1)
 
 
 def rot_angle(Ra: torch.Tensor, Rb: torch.Tensor) -> torch.Tensor:
     """Geodesic angle between rotations (via the relative quaternion: exact near 0, finite gradient)."""
-    q = mat_to_quat(Ra.transpose(-1, -2) @ Rb)
+    q = mat_to_quat(mm3(Ra.transpose(-1, -2), Rb))
     return 2 * torch.atan2((q[..., 1:] ** 2).sum(-1).clamp(min=1e-30).sqrt(), q[..., 0].abs())
 
 
@@ -78,15 +77,14 @@ def rel_sites(P, R, V, W):
     [ang, lin]. As in MuscleMimic, the linear part is R_main (v_main - v_site) and the angular part
     (R_main^T R_site)^T w_site - w_main."""
     P0, R0, V0, W0 = P[..., :1, :], R[..., :1, :, :], V[..., :1, :], W[..., :1, :]
-    rrot = R0.transpose(-1, -2) @ R[..., 1:, :, :]
+    rrot = mm3(R0.transpose(-1, -2), R[..., 1:, :, :])
     rpos = P[..., 1:, :] - P0
-    lin = (R0 @ (V0 - V[..., 1:, :]).unsqueeze(-1)).squeeze(-1)
-    ang = (rrot.transpose(-1, -2) @ W[..., 1:, :].unsqueeze(-1)).squeeze(-1) - W0
+    lin = mv3(R0, V0 - V[..., 1:, :])
+    ang = mv3(rrot.transpose(-1, -2), W[..., 1:, :]) - W0
     return rpos, so3_log(rrot), torch.cat((ang, lin), -1)
 
 
-def _mv(R: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-    return (R @ x.unsqueeze(-1)).squeeze(-1)
+_mv = mv3
 
 
 class TrackingHeads:
@@ -136,7 +134,7 @@ class TrackingHeads:
         """The free joint's rotation (its body's frame: MS-Human-700's pelvis, MyoFullBody's ``Full Body``, to
         which the pelvis is welded) and its qvel [v world, w body]."""
         if "pelvis" not in ctx.cache:
-            Rp = ctx.S[1] @ self.kin.R_off.T
+            Rp = mm3(ctx.S[1], self.kin.R_off.T)
             ctx.cache["pelvis"] = (Rp, torch.cat((ctx.S[2], _mv(Rp.transpose(-1, -2), ctx.S[3])), -1))
         return ctx.cache["pelvis"]
 

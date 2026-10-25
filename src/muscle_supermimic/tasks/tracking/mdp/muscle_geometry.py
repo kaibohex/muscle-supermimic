@@ -22,6 +22,8 @@ import mujoco
 import numpy as np
 import torch
 
+from muscle_supermimic.utils.rotations import mm3, mv3
+
 from .kinematics import SkeletonKinematics
 
 MINVAL = 1e-15  # mjMINVAL
@@ -209,7 +211,7 @@ class MuscleGeometry:
         z = q.new_zeros(lead + (3,))
         R = self.kin.R_off.expand(lead + (3, 3))  # pelvis body frame = world
         P, Rb, V, W = self.kin.forward(z, R, z, z, q, qd)
-        X = P[..., self.site_body, :] + (Rb[..., self.site_body, :, :] @ self.site_pos.unsqueeze(-1)).squeeze(-1)
+        X = P[..., self.site_body, :] + mv3(Rb[..., self.site_body, :, :], self.site_pos)
         # site velocities: link-origin velocity + w x (x - origin)
         Xd = V[..., self.site_body, :] + torch.cross(W[..., self.site_body, :], X - P[..., self.site_body, :], dim=-1)
         L = q.new_zeros(lead + (self.num_muscles,))
@@ -222,8 +224,8 @@ class MuscleGeometry:
         Ld = Ld.index_add(-1, self.pair_col, (u * (Xd[..., self.pair_s1, :] - Xd[..., self.pair_s0, :])).sum(-1))
         # site-geom-site
         gb = self.geom_body[self.tri_g]
-        gpos = P[..., gb, :] + (Rb[..., gb, :, :] @ self.geom_pos[self.tri_g].unsqueeze(-1)).squeeze(-1)
-        gR = Rb[..., gb, :, :] @ self.geom_R[self.tri_g]
+        gpos = P[..., gb, :] + mv3(Rb[..., gb, :, :], self.geom_pos[self.tri_g])
+        gR = mm3(Rb[..., gb, :, :], self.geom_R[self.tri_g])
         x0, x1, sd = X[..., self.tri_s0, :], X[..., self.tri_s1, :], X[..., self.tri_side, :]
         wl, t0, t1 = self._wrap(x0, x1, gpos, gR, sd)
         wrapped = wl >= 0
@@ -245,9 +247,7 @@ class MuscleGeometry:
         """util_misc.wrap for every site-geom-site triple: (wrap length or -1, 3D tangent points in world)."""
         r = self.geom_radius[self.tri_g].expand(x0.shape[:-1])
         gRt = gR.transpose(-1, -2)
-        p0 = (gRt @ (x0 - gpos).unsqueeze(-1)).squeeze(-1)
-        p1 = (gRt @ (x1 - gpos).unsqueeze(-1)).squeeze(-1)
-        sp = (gRt @ (side - gpos).unsqueeze(-1)).squeeze(-1)
+        p0, p1, sp = mv3(gRt, x0 - gpos), mv3(gRt, x1 - gpos), mv3(gRt, side - gpos)
         cyl = self.tri_cyl.expand(r.shape).unsqueeze(-1)
         # 2D frame: sphere - plane of (0, p0, p1); cylinder - local xy
         ax0 = _unit(p0)
@@ -288,8 +288,8 @@ class MuscleGeometry:
         res0 = torch.cat((res0[..., :2], torch.where(c, z0, res0[..., 2]).unsqueeze(-1)), -1)
         res1 = torch.cat((res1[..., :2], torch.where(c, z1, res1[..., 2]).unsqueeze(-1)), -1)
         wl = torch.where(c & (wl >= 0), _sqrt(wl * wl + (z1 - z0) ** 2), wl)
-        w0 = (gR @ res0.unsqueeze(-1)).squeeze(-1) + gpos
-        w1 = (gR @ res1.unsqueeze(-1)).squeeze(-1) + gpos
+        w0 = mv3(gR, res0) + gpos
+        w1 = mv3(gR, res1) + gpos
         return wl, w0, w1
 
     def force(self, L: torch.Tensor, Ld: torch.Tensor, act: torch.Tensor) -> torch.Tensor:

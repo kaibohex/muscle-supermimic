@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 
 from muscle_supermimic.tasks.tracking.mdp.heads import invariant_features
-from muscle_supermimic.utils.rotations import so3_exp, so3_log, yaw_mat
+from muscle_supermimic.utils.rotations import mm3, mv3, so3_exp, so3_log, yaw_mat
 
 
 def mlp(inp: int, hidden: list[int], out: int, act=nn.ELU, layer_norm: bool = False) -> nn.Sequential:
@@ -98,10 +98,10 @@ class WorldModel(nn.Module):
         Rt = R.transpose(-1, -2)
         return torch.cat(
             (
-                (H.transpose(-1, -2) @ (p1 - p).unsqueeze(-1)).squeeze(-1),
-                so3_log(Rt @ R1),
-                (Rt @ (v1 - v).unsqueeze(-1)).squeeze(-1),
-                (Rt @ (w1 - w).unsqueeze(-1)).squeeze(-1),
+                mv3(H.transpose(-1, -2), p1 - p),
+                so3_log(mm3(Rt, R1)),
+                mv3(Rt, v1 - v),
+                mv3(Rt, w1 - w),
                 q1 - q,
                 qd1 - qd,
             ),
@@ -115,10 +115,10 @@ class WorldModel(nn.Module):
         d = y[..., : self.out_dim] * self.out_norm.std() + self.out_norm.mean
         H = yaw_mat(R)
         dp, dth, dv, dw, dq, dqd = d.split((3, 3, 3, 3, self.nq, self.nq), -1)
-        p1 = p + (H @ dp.unsqueeze(-1)).squeeze(-1)
-        R1 = R @ so3_exp(dth)
-        v1 = v + (R @ dv.unsqueeze(-1)).squeeze(-1)
-        w1 = w + (R @ dw.unsqueeze(-1)).squeeze(-1)
+        p1 = p + mv3(H, dp)
+        R1 = mm3(R, so3_exp(dth))
+        v1 = v + mv3(R, dv)
+        w1 = w + mv3(R, dw)
         return (p1, R1, v1, w1, q + dq, qd + dqd), y[..., self.out_dim :]
 
     def touch(self, touch_n: torch.Tensor) -> torch.Tensor:
