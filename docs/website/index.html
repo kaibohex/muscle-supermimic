@@ -19,6 +19,8 @@
     <p class="subtitle">Whole-body motion tracking for musculoskeletal humanoids with one differentiable world model</p>
     <!-- EDIT: authors (and an affiliations line, .affiliations) once decided; the BibTeX below names them too -->
     <div class="author-list"><span class="author">The muscle-supermimic Authors</span></div>
+    <p class="dev-note"><i aria-hidden="true"></i>This project is under active development: its results keep improving, and the
+      code, the technical report and the checkpoints are updated along with them.</p>
     <div class="link-buttons">
       <a class="btn" href="https://github.com/kaibohex/muscle-supermimic" target="_blank" rel="noopener">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -28,20 +30,20 @@
       <!-- EDIT: coming soon; link https://huggingface.co/Beanpow/muscle-supermimic (private for now) once it is public -->
       <span class="btn disabled" aria-disabled="true">Checkpoints <span class="soon">coming soon</span></span>
     </div>
-    <div class="venue">Open-source research code · 2026</div>
   </div>
 </header>
 
 <main>
 
 <section class="section teaser" style="padding-bottom: 0.5rem;">
-  <div class="container medium">
+  <div class="container">
     <figure>
       <video class="video" src="static/videos/teaser.mp4" poster="static/videos/teaser_poster.jpg" muted loop playsinline preload="metadata" data-autoplay
-        aria-label="MyoFullBody, with its muscles drawn in red, tracks three motion-capture clips: turning left, walking forward, walking backward"></video>
-      <figcaption><strong>MyoFullBody tracking three training clips.</strong>Turning left, walking forward and walking backward,
-        from MuscleMimic's KIT set: the simulated body with its 354 muscles, driven by the policy, which sets every muscle's
-        excitation 100 times a second. All three clips are tracked to the end, at a normalized return of 0.79.</figcaption>
+        aria-label="MS-Human-700, with its muscles drawn in red, tracks three motion-capture clips: turning left, walking forward, walking backward"></video>
+      <figcaption><strong>MS-Human-700 tracking three training clips.</strong>Turning left, walking forward and walking backward,
+        from MuscleMimic's KIT set, retargeted to MS-Human-700: the simulated body with its 694 muscles, driven by the policy,
+        which sets every muscle's excitation 100 times a second. All three clips are tracked to the end, at a normalized return
+        of 0.86 (iteration 6500). MyoFullBody joins this view once its run has trained.</figcaption>
     </figure>
   </div>
 </section>
@@ -55,10 +57,9 @@
       with <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a>'s tracking task.</p>
     <p>Between the policy and the skeleton sit activation dynamics, wrapping tendons and Hill-type force curves. Every observation,
       reward and termination is one analytic function, evaluated by the simulator and on imagined states alike, with a torch replica
-      of MuJoCo's muscles in it. On MyoFullBody, one run trains in 10.7 hours on one GPU to a normalized return of 0.77 on MuscleMimic's 108 held-out clips, 101 of them tracked to the end.
-      On these bodies the policy gradient through imagination can also explode, and we found where: in a closed loop through the
-      policy's muscle-velocity observation. With a per-trajectory clip of that gradient, MS-Human-700 learns as well: 0.61 on
-      the held-out clips at iteration 3000, in a run still training.</p>
+      of MuJoCo's muscles in it. On MS-Human-700, one run on one GPU reaches a normalized return of 0.67 on MuscleMimic's 108
+      held-out clips after 2.1 hours (iteration 3500), 86 of them tracked to the end, and is still training; MyoFullBody is
+      training with the same code.</p>
   </div>
 </section>
 
@@ -70,7 +71,7 @@
         <table>
           <thead><tr><th></th><th>MS-Human-700</th><th>MyoFullBody</th></tr></thead>
           <tbody>
-            <tr><th>Model</th><td><a href="https://github.com/LNSGroup/MS-Human-700">LNSGroup</a></td><td><a href="https://github.com/amathislab/musclemimic">MuscleMimic</a>, <code>musclemimic-models</code> 1.0.6</td></tr>
+            <tr><th>Model</th><td><a href="https://github.com/LNSGroup/MS-Human-700">LNSGroup</a></td><td><a href="https://github.com/MyoHub/myosuite">MyoSuite</a>†</td></tr>
             <tr><th>Joint DoF</th><td>37 + free root (33 with locked hands)</td><td>31 + free root (fingers disabled)</td></tr>
             <tr><th>Muscles</th><td>700 (694)</td><td>354</td></tr>
             <tr><th>Coupled joints</th><td>42 (38)</td><td>51</td></tr>
@@ -79,7 +80,9 @@
             <tr><th>Self-contacts</th><td>off</td><td>75 pairs, as in MuscleMimic</td></tr>
           </tbody>
         </table>
-        <p class="muted" style="font-size: 0.8rem; margin-top: 0.5rem;">* locked hands, 694 muscles. Coupled joints (knee
+        <p class="muted" style="font-size: 0.8rem; margin-top: 0.5rem;">† as packaged by
+          <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a> in <code>musclemimic-models</code> 1.0.6.
+          * locked hands, 694 muscles. Coupled joints (knee
           translations, patella, shoulder girdle) follow independent ones through <code>&lt;equality&gt;</code> polynomials,
           reproduced exactly by the differentiable kinematics.</p>
       </div>
@@ -103,7 +106,10 @@
       excitations, the activations follow MuJoCo's own activation dynamics, and the world model moves the body. Rewards,
       terminations and observations on imagined states come from the same functions that label the simulator's transitions,
       including muscle length, velocity and force from a torch replica of MuJoCo's spatial tendons (equal to MuJoCo's to
-      10⁻⁹ / 10⁻⁸ / 10⁻⁶). The gradient of the return, with a critic's value at the last step, flows back through all of it.</p>
+      10⁻⁹ / 10⁻⁸ / 10⁻⁶). The gradient of the return, with a critic's value at the last step, flows back through all of it.
+      At every imagined step, each trajectory's gradient on the state it carries forward is clipped to a norm of 100
+      (<code>--agent.state-grad-clip 100</code>): through the policy's muscle-velocity observation the loop can amplify it
+      step after step, and the clip bounds that growth without cutting the loop.</p>
     <figure class="diagram" style="margin-top: 1.2rem;">
       <div class="table-wrap">
         <svg viewBox="0 0 860 300" style="min-width: 620px;" role="img" aria-label="Collection: the policy drives the simulator, transitions go to a replay buffer, the world model is fit on them. Improvement: a loop of state, observation, policy, activation dynamics and world model over 32 imagined steps, with analytic rewards and a critic at the end; the gradient flows back through the loop.">
@@ -164,15 +170,9 @@
   <div class="container medium">
     <h2>MyoFullBody</h2>
     <p>One run on MuscleMimic's KIT split, 972 training clips (1.5 h of motion), 4096 parallel environments, MuscleMimic's solver
-      settings (Euler, 100 / 50 iterations), on one RTX 5090. Tracking took off around iteration 3500; the checkpoint below is
-      iteration 12000, after 10.7 hours. Evaluation runs every clip once from its first frame without exploration noise.</p>
-    <div class="stats">
-      <div class="stat"><div class="stat-label">Training episode length, iteration 12000</div><div class="stat-value">268<small>steps (2.7 s)</small></div></div>
-      <div class="stat"><div class="stat-label">Training episodes ending in a failure</div><div class="stat-value">7 %</div></div>
-      <div class="stat"><div class="stat-label">Normalized return, 3 training clips</div><div class="stat-value">0.79<small>0 failed</small></div></div>
-      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips</div><div class="stat-value" id="test-return">0.77<small>7 failed</small></div></div>
-    </div>
-    <div class="two-col">
+      settings (Euler, 100 / 50 iterations), on one RTX 5090. The run has just started; the curves below are a snapshot at
+      iteration 500, and the held-out evaluation, the clips and the checkpoint follow as it trains.</p>
+    <div class="two-col" style="margin-top: 1.2rem;">
       <div class="chart" id="chart-eplen">
         <div class="chart-title">Mean training episode length</div>
         <div class="chart-sub">steps of 10 ms, per 50 iterations</div>
@@ -182,27 +182,6 @@
         <div class="chart-sub">% of finished episodes, per 50 iterations</div>
       </div>
     </div>
-    <h3>Training clips</h3>
-    <div class="three-col">
-      <figure><video class="video square" src="static/videos/train_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning left"></video>
-        <div class="clip-label">Turn left · <code>359/turn_left05</code></div></figure>
-      <figure><video class="video square" src="static/videos/train_walk_forward05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking forward"></video>
-        <div class="clip-label">Walk forward · <code>11/WalkingStraightForwards05</code></div></figure>
-      <figure><video class="video square" src="static/videos/train_walk_backward04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking backward"></video>
-        <div class="clip-label">Walk backward · <code>7/WalkingStraightBackwards04</code></div></figure>
-    </div>
-    <h3>Held-out clips</h3>
-    <p>On MuscleMimic's 108 test clips, never seen in training, the normalized return is 0.77 and 101 clips are tracked to the
-      end. The 7 failures are three clockwise circles, two right turns, one walk and one walk along a handrail beam. Shown: for
-      three kinds of motion, the first test clip in the list that was tracked to the end, not picked by score.</p>
-    <div class="three-col" style="margin-top: 1rem;">
-      <figure><video class="video square" src="static/videos/test_walking_run06.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Running"></video>
-        <div class="clip-label">Run · <code>348/walking_run06</code></div></figure>
-      <figure><video class="video square" src="static/videos/test_turn_right09.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning right"></video>
-        <div class="clip-label">Turn right · <code>317/turn_right09</code></div></figure>
-      <figure><video class="video square" src="static/videos/test_ccw_circle04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking a counter-clockwise circle"></video>
-        <div class="clip-label">Counter-clockwise circle · <code>4/WalkInCounterClockwiseCircle04</code></div></figure>
-    </div>
   </div>
 </section>
 
@@ -210,31 +189,27 @@
   <div class="container medium">
     <h2>MS-Human-700</h2>
     <p>MS-Human-700 with locked hands (694 muscles) on the same 972 training clips, retargeted to it, with MyoFullBody's
-      settings plus the per-trajectory clip of the state gradient described <a href="#gradient">below</a>
-      (<code>--agent.state-grad-clip 100</code>): two seeds, one RTX 5090 each. Without the clip, no run took off. The runs are
-      still training; this is a snapshot at iteration 5400 (seed 42) and 3300 (seed 1), and the held-out evaluation, on CPU,
-      trails training.</p>
+      settings, on one RTX 5090. The run is still training; this is a snapshot at iteration 7150, and the held-out evaluation,
+      on CPU, trails training.</p>
     <div class="stats">
-      <div class="stat"><div class="stat-label">Training episode length, seed 42, iteration 5400</div><div class="stat-value">297<small>steps (3.0 s)</small></div></div>
-      <div class="stat"><div class="stat-label">Training episodes ending in a failure</div><div class="stat-value">2 %</div></div>
-      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips, iteration 3000</div><div class="stat-value">0.61<small>78 tracked</small></div></div>
-      <div class="stat"><div class="stat-label">The same without the clip, best checkpoint</div><div class="stat-value">0.18<small>0 tracked</small></div></div>
+      <div class="stat"><div class="stat-label">Training episode length, iterations 6700–7150</div><div class="stat-value">281<small>steps (2.8 s)</small></div></div>
+      <div class="stat"><div class="stat-label">Training episodes ending in a failure, the same iterations</div><div class="stat-value">1 %</div></div>
+      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips, iteration 3500</div><div class="stat-value">0.67<small>86 tracked</small></div></div>
+      <div class="stat"><div class="stat-label">Training time to iteration 7150</div><div class="stat-value">4.4<small>hours</small></div></div>
     </div>
     <div class="two-col">
       <div class="chart" id="chart-ms-eplen">
         <div class="chart-title">Mean training episode length</div>
         <div class="chart-sub">steps of 10 ms, per 50 iterations</div>
-        <div class="chart-legend"></div>
       </div>
       <div class="chart" id="chart-ms-eval">
         <div class="chart-title">Normalized return on the 108 held-out clips</div>
         <div class="chart-sub">per evaluated checkpoint, every clip once from its first frame</div>
-        <div class="chart-legend"></div>
       </div>
     </div>
     <h3>Clips at iteration 5000</h3>
-    <p>The checkpoint of iteration 5000 (seed 42) on the teaser's turning clip from the training set and the three held-out clips
-      shown for MyoFullBody: all four are tracked to the end, at a normalized return of 0.74.</p>
+    <p>The checkpoint of iteration 5000 on the teaser's turning clip from the training set and on three held-out clips, a run, a
+      right turn and a counter-clockwise circle: all four are tracked to the end, at a normalized return of 0.74.</p>
     <div class="four-col" style="margin-top: 1rem;">
       <figure><video class="video square" src="static/videos/ms_train_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="MS-Human-700 turning left"></video>
         <div class="clip-label">Turn left (training) · <code>359/turn_left05</code></div></figure>
@@ -245,48 +220,6 @@
       <figure><video class="video square" src="static/videos/ms_test_ccw_circle04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="MS-Human-700 walking a counter-clockwise circle"></video>
         <div class="clip-label">Counter-clockwise circle · <code>4/WalkInCounterClockwiseCircle04</code></div></figure>
     </div>
-  </div>
-</section>
-
-<section class="section" id="gradient">
-  <div class="container medium">
-    <h2>Where the policy gradient explodes</h2>
-    <p>The policy's gradient passes through 32 steps of world model and policy. Without a remedy, on MS-Human-700 its norm before
-      clipping reached 10²–10⁵ in most updates (a run that learns sits near 2), and the run never took off. Measured on a checkpoint
-      of that run, nearly all of it comes from 1 % of the imagined trajectories, spread over 208 different clips. Going back
-      through the steps, the gradient on those trajectories' state grows about 1.3× per step; on the other 99 % it barely grows.</p>
-    <div class="chart" id="chart-growth" style="margin-top: 1rem;">
-      <div class="chart-title">Gradient of a trajectory's return with respect to its imagined state</div>
-      <div class="chart-sub">median norm per trajectory, 8 × 4096 imagined trajectories (MS-Human-700, unclipped run, iteration 6000)</div>
-      <div class="chart-legend"></div>
-    </div>
-    <p style="margin-top: 1.2rem;">The world model alone is stable: cutting the gradient through the policy's whole observation
-      brings the norm down to 1.8. Cutting it through one observation term at a time finds the loop: muscle velocity alone takes
-      it from 49K to 16. Muscle velocity feeds the policy, the policy sets the activations, the world model turns them into joint
-      velocity, which is muscle velocity again; on some trajectories the gain around this loop exceeds 1. MS-Human-700 has twice MyoFullBody's
-      muscles, with smaller velocities (median standard deviation 0.022 against 0.053 m/s), and its policy's total gain on them
-      comes out about 2.8 times MyoFullBody's.</p>
-    <div class="chart" id="chart-ablation" style="margin-top: 1rem;">
-      <div class="chart-title">Policy-gradient norm with the gradient through one observation term cut</div>
-      <div class="chart-sub">same checkpoint, median of 3 batches; blue: the muscle-state terms of the loop</div>
-    </div>
-    <p style="margin-top: 1.2rem;">MyoFullBody is not immune: the run above collapsed the same way at iteration 12700, when its
-      gradient norm jumped from about 1 to 10³–10⁴ and its episodes fell from 280 to about 110 steps.</p>
-    <div class="two-col" style="margin-top: 1rem;">
-      <div class="chart" id="chart-collapse-len">
-        <div class="chart-title">MyoFullBody episode length</div>
-        <div class="chart-sub">steps, around the collapse (iterations 11k–14k)</div>
-      </div>
-      <div class="chart" id="chart-collapse-grad">
-        <div class="chart-title">MyoFullBody policy-gradient norm</div>
-        <div class="chart-sub">before clipping, around the collapse (iterations 11k–14k)</div>
-      </div>
-    </div>
-    <div class="note" style="margin-top: 1.2rem;"><strong>The remedy.</strong>Clipping, at every imagined step, each
-      trajectory's gradient on the state it carries forward (<code>--agent.state-grad-clip 100</code>) bounds this growth
-      without removing the loop. Only 0.1–0.4 % of trajectory steps get clipped, and the gradient norm stays near 1–2 (at most
-      5). With it, MS-Human-700 takes off around iteration 2000 in both seeds (<a href="#mshuman">above</a>), and a new
-      MyoFullBody run reaches 250-step episodes by iteration 3000, against 104 without.</div>
   </div>
 </section>
 
@@ -302,7 +235,8 @@ uvx --from huggingface_hub hf download amathislab/musclemimic-retargeted --repo-
 
 uv run train Mjlab-SuperMimic-Flat-MyoFullBody \
     --env.commands.motion.motion-file data/musclemimic/kit_kinesis_train.txt \
-    --env.sim.mujoco.integrator euler --env.sim.mujoco.iterations 100 --env.sim.mujoco.ls-iterations 50</code></pre>
+    --env.sim.mujoco.integrator euler --env.sim.mujoco.iterations 100 --env.sim.mujoco.ls-iterations 50 \
+    --agent.state-grad-clip 100</code></pre>
     <p style="margin-top: 0.9rem;">MS-Human-700, evaluation, rendering and memory settings: see the
       <a href="https://github.com/kaibohex/muscle-supermimic">README</a> and
       <a href="https://github.com/kaibohex/muscle-supermimic/tree/master/docs">docs</a>.</p>

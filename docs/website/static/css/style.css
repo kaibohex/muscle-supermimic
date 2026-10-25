@@ -14,11 +14,9 @@
   --border:        #e0e0e0;
   --grid:          #e1e0d9;
   --axis:          #c3c2b7;
-  --bar-muted:     #c3c2b7;
   --series-1:      #2a78d6;
   --series-2:      #eb6834;
   --series-1-wash: rgba(42, 120, 214, 0.10);
-  --note-bg:       #f4f7fc;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
@@ -42,11 +40,9 @@
     --border:        #2f2f2d;
     --grid:          #2c2c2a;
     --axis:          #383835;
-  --bar-muted:     #5f5e5a;
     --series-1:      #3987e5;
     --series-2:      #d95926;
     --series-1-wash: rgba(57, 135, 229, 0.14);
-    --note-bg:       #18202b;
   }
 }
 :root[data-theme="dark"] {
@@ -61,11 +57,9 @@
   --border:        #2f2f2d;
   --grid:          #2c2c2a;
   --axis:          #383835;
-  --bar-muted:     #5f5e5a;
   --series-1:      #3987e5;
   --series-2:      #d95926;
   --series-1-wash: rgba(57, 135, 229, 0.14);
-  --note-bg:       #18202b;
 }
 
 /* ── Base ─────────────────────────────────────────────────── */
@@ -105,6 +99,8 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .subtitle { font-size: clamp(1.05rem, 2.2vw, 1.3rem); font-weight: 400; color: var(--text-muted); max-width: 40rem; margin: 0 auto 0.9rem; line-height: 1.4; }
 .author-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem 1.5rem; margin-bottom: 1.1rem; font-size: 1.05rem; }
 .author { font-weight: 500; }
+.dev-note { display: inline-flex; align-items: baseline; gap: 0.5rem; max-width: 44rem; margin: 0 auto 1.1rem; padding: 0.4rem 0.9rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.85rem; line-height: 1.4; color: var(--text-muted); text-align: left; }
+.dev-note i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--series-1); transform: translateY(-1px); }
 .author sup, .affiliations sup { font-size: 0.7em; margin-left: 1px; opacity: 0.7; }
 .affiliations { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.2rem 1.2rem; font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.1rem; }
 .link-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; margin-bottom: 0.9rem; }
@@ -114,14 +110,13 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .btn.disabled:hover { border-color: var(--border); }
 .btn .soon { font-size: 0.72rem; font-weight: 500; color: var(--text-light); border: 1px solid var(--border); border-radius: 999px; padding: 0 0.45rem; }
 .btn svg { width: 15px; height: 15px; fill: currentColor; }
-.venue { font-size: 0.85rem; color: var(--text-light); letter-spacing: 0.02em; }
 
 /* ── Figures and media ────────────────────────────────────── */
 figure { margin: 0; }
 figcaption { font-size: 0.88rem; color: var(--text-muted); margin-top: 0.6rem; line-height: 1.55; }
 figcaption strong { color: var(--text); margin-right: 0.3rem; }
 .video { width: 100%; border-radius: var(--radius); background: #fff; aspect-ratio: 16 / 9; object-fit: cover; }
-.teaser .video { aspect-ratio: 3 / 1; }
+.teaser .video { aspect-ratio: 1264 / 420; }
 .video.square { aspect-ratio: 1 / 1; }
 .video.wide43 { aspect-ratio: 4 / 3; }
 .clip-label { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.35rem; }
@@ -142,10 +137,6 @@ thead th { color: var(--text-muted); font-weight: 500; font-size: 0.82rem; }
 .stat-label { font-size: 0.8rem; color: var(--text-muted); line-height: 1.35; }
 .stat-value { font-size: 1.6rem; font-weight: 600; line-height: 1.2; margin-top: 0.3rem; }
 .stat-value small { font-size: 0.85rem; font-weight: 500; color: var(--text-muted); margin-left: 0.2rem; }
-
-/* ── Notes ────────────────────────────────────────────────── */
-.note { border: 1px solid var(--border); border-left: 3px solid var(--series-1); background: var(--note-bg); border-radius: var(--radius); padding: 0.9rem 1.1rem; font-size: 0.95rem; }
-.note strong { display: block; margin-bottom: 0.2rem; }
 
 /* ── Diagram ──────────────────────────────────────────────── */
 .diagram svg { width: 100%; height: auto; }
@@ -171,7 +162,6 @@ thead th { color: var(--text-muted); font-weight: 500; font-size: 0.82rem; }
 .chart .ref-line { stroke: var(--text-light); stroke-width: 1; }
 .chart .ref-label, .chart .direct-label { fill: var(--text-muted); font-size: 11px; font-family: var(--font-sans); }
 .chart .crosshair { stroke: var(--text-light); stroke-width: 1; }
-.chart .bar:hover, .chart .bar:focus { opacity: 0.8; outline: none; }
 .legend { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; }
 .legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
 .legend i { display: inline-block; width: 14px; height: 2px; border-radius: 1px; }
@@ -180,9 +170,6 @@ thead th { color: var(--text-muted); font-weight: 500; font-size: 0.82rem; }
 .tooltip .tt-row { display: flex; align-items: center; gap: 0.4rem; }
 .tooltip .tt-row i { display: inline-block; width: 10px; height: 2px; border-radius: 1px; }
 .tooltip .tt-row b { font-weight: 600; color: var(--text); }
-details.data { margin-top: 0.4rem; font-size: 0.8rem; color: var(--text-muted); }
-details.data summary { cursor: pointer; }
-details.data table { margin-top: 0.4rem; font-size: 0.78rem; }
 
 /* ── BibTeX ───────────────────────────────────────────────── */
 .bibtex { position: relative; }
