@@ -26,9 +26,9 @@ MyoFullBody trains on MuscleMimic's retargeted AMASS clips.
 | `src/muscle_supermimic/tasks/tracking/mdp/` | `kinematics.py` differentiable FK, `muscle.py` activation dynamics, `muscle_geometry.py` muscle length / velocity / force, `motion.py` reference library, `heads.py` analytic MDP, `commands.py` motion command (reset sampling), `actions.py`, `observations.py`, `rewards.py`, `terminations.py` |
 | `src/muscle_supermimic/tasks/tracking/config/mshuman700/` | robot binding, registration of `Mjlab-SuperMimic-Flat-MS-Human-700` and `...-Locked-Hands` |
 | `src/muscle_supermimic/tasks/tracking/config/myofullbody/` | robot binding, registration of `Mjlab-SuperMimic-Flat-MyoFullBody` |
-| `src/muscle_supermimic/tasks/tracking/scripts/` | `convert_motion.py` (`ms-convert-motion`), `evaluate.py` (`ms-eval`) |
+| `src/muscle_supermimic/tasks/tracking/scripts/` | `convert_motion.py` (`ms-convert-motion`), `retarget_myofullbody.py` (`ms-retarget-myofullbody`), `evaluate.py` (`ms-eval`), `render.py` (`ms-render`) |
 | `src/muscle_supermimic/rl/supermimic/` | the SuperMimic runner (`runner.py`), world model / policy / critic (`networks.py`), replay buffer, config |
-| `tests/` | FK, activation dynamics and muscle length / velocity / force vs MuJoCo (both robots); muscle-joint map vs finite-difference moment arms; MyoFullBody vs MuscleMimic's finger removal and its retargeted body poses; simulator vs analytic heads; a tiny end-to-end training run (all tasks) |
+| `tests/` | FK, activation dynamics and muscle length / velocity / force vs MuJoCo (both robots); muscle-joint map vs finite-difference moment arms; MyoFullBody vs MuscleMimic's finger removal and its retargeted body poses; MyoFullBody -> MS-Human-700 retargeting; simulator vs analytic heads; a tiny end-to-end training run (all tasks) |
 
 The tasks are registered through the `mjlab.tasks` entry point, so mjlab's own `train` / `play` CLIs
 run them with the SuperMimic runner (`register_mjlab_task(..., runner_cls=SuperMimicRunner)`).
@@ -108,6 +108,30 @@ off by up to 0.48 rad, which the motion library ignores like every coupled joint
 shank and foot follow the installed model's coupler, up to 4 cm away from the poses stored with the
 test clip (`tests/test_myofullbody.py`). Everything else matches them to < 1 mm.
 
+MS-Human-700 clips from the same AMASS motions: `ms-retarget-myofullbody` retargets MyoFullBody clips onto
+MS-Human-700 (CPU; the 1080 KIT clips take 20 min with 6 processes):
+
+```bash
+uv run ms-retarget-myofullbody data/mshuman700_kit data/musclemimic/kit_kinesis_train.txt data/musclemimic/kit_kinesis_test.txt --workers 6
+```
+
+It writes canonical clips under `data/mshuman700_kit/` (paths relative to the KIT folder) and the two lists
+next to them. Both models come from the same OpenSim models: the legs (hip, knee, ankle, subtalar, mtp) and
+the shoulder, elbow and forearm have the same joints about the same axes, so those 27 angles carry over
+(their segments turn exactly alike; positions differ by the knee's translation curves, < 2 cm, and the
+shoulders' place on the thorax, ~4 cm), and so does the root pose (the pelvis frames coincide). The rest is
+fitted, all frames of a clip at once (L-BFGS through the torch FK, so the couplers hold exactly): L5_S1 and
+T12_L1 to the thorax's rotation relative to the pelvis (MyoFullBody bends five lumbar levels and keeps thorax
+and head rigid; residual <= 0.01 deg in all but one clip, whose 40 deg of axial twist exceed MS-Human-700's
++-0.6 rad, 4 deg there), wrist flexion to the hand's rotation relative to the radius. The neck and wrist
+deviation stay at 0: MS-Human-700's deviation axis is oblique and turns the hand the other way, and in the GMR
+clips MyoFullBody's deviation mostly sits at its limit, an IK artifact. The hand residuals are that
+deviation: a clip's worst frame is off by 10 deg (median over clips), at most 29 deg. Angles beyond
+MS-Human-700's ranges (mostly ankle dorsiflexion past 0.52 rad and subtalar past 0.34 rad) are clipped: 1 %
+of the values in the median clip, at most 4 %. Finally each clip is lowered by one height, 0.74 cm (median;
+up to 0.93 cm), so that the feet touch the ground as in the source (MS-Human-700's foot capsules sit higher
+than MyoFullBody's foot geoms on the same bones).
+
 ## Tasks
 
 | Task | Joint DoF | Muscles |
@@ -153,6 +177,8 @@ uv run play Mjlab-SuperMimic-Flat-MS-Human-700 --checkpoint-file <model.pt> --mo
 # MyoFullBody on MuscleMimic's KIT split (logs to logs/rsl_rl/myofullbody_tracking/)
 uv run train Mjlab-SuperMimic-Flat-MyoFullBody --env.commands.motion.motion-file data/musclemimic/kit_kinesis_train.txt
 uv run ms-eval --task Mjlab-SuperMimic-Flat-MyoFullBody --run-dir logs/rsl_rl/myofullbody_tracking/<run> --motion-file data/musclemimic/kit_kinesis_test.txt
+# MS-Human-700 on the same split, retargeted from MyoFullBody
+uv run train Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands --env.commands.motion.motion-file data/mshuman700_kit/kit_kinesis_train.txt
 ```
 
 Runs log to `logs/rsl_rl/mshuman700_tracking/<date>/` (`train_log.csv`, tensorboard, `model_*.pt` every
