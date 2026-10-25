@@ -26,6 +26,16 @@ world-model inputs) set as in a SuperMimic port to MuscleMimic in which training
 Optional, off by default (`--agent.critic-target-alpha`, `--agent.value-clip`): a SHAC-style target critic
 and clamping bootstrapped values to the attainable maximum.
 
+`--agent.state-grad-clip <c>` (off by default, not in SuperMimic): at every imagined step, each trajectory's
+gradient with respect to what it carries to the next step (body state, activations, foot touch, last action) is
+clipped to norm c, measured on that trajectory's own return; `pi_state_clip` in the log is the fraction of
+trajectory steps clipped. It bounds the gradient growth around the loop muscle-velocity observation → policy →
+activation → world model, which otherwise lets 1 % of the imagined trajectories dominate an update (see the
+[project page](index.html)). We use c = 100; per-step norms of the other trajectories have a median of ~6 and a
+99th percentile of ~130. With it, MS-Human-700 takes off around iteration 2000 in two seeds (without it, not by
+6000), and MyoFullBody reaches 166-step episodes by iteration 2000 (82 without); 0.1-0.2 % of trajectory steps get
+clipped.
+
 ## Commands
 
 ```bash

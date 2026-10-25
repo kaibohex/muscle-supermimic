@@ -33,7 +33,9 @@ Research code, in progress.
 - **MS-Human-700** (locked hands) on the same clips retargeted to it: training.
 - **Known issue**: the policy gradient through imagination can explode along the loop muscle-velocity
   observation → policy → activation → world model; the MyoFullBody run above collapsed that way from
-  iteration ~12700. A per-trajectory clip of the gradient on the imagined state is being evaluated.
+  iteration ~12700. The opt-in `--agent.state-grad-clip 100` clips each imagined trajectory's gradient on the
+  state it carries forward; with it, MS-Human-700 takes off around iteration 2000 in two seeds. The runs are still
+  training.
 
 ## Install
 
