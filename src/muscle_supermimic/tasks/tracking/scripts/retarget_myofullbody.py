@@ -66,11 +66,11 @@ def lowest_foot_point(m: mujoco.MjModel, p: np.ndarray, quat: np.ndarray, q: np.
     for t in range(len(p)):
         d.qpos[:3], d.qpos[3:7], d.qpos[7:] = p[t], quat_body[t], q_full[t]
         mujoco.mj_kinematics(m, d)
-        out[t] = min(d.geom_xpos[g, 2] - _half_height(m, d, g) for g in geoms)
+        out[t] = min(d.geom_xpos[g, 2] - geom_half_height(m, d, g) for g in geoms)
     return out
 
 
-def _half_height(m: mujoco.MjModel, d: mujoco.MjData, g: int) -> float:
+def geom_half_height(m: mujoco.MjModel, d: mujoco.MjData, g: int) -> float:
     """Extent of geom g below its center along world z."""
     zrow, size = d.geom_xmat[g].reshape(3, 3)[2], m.geom_size[g]
     if m.geom_type[g] == mujoco.mjtGeom.mjGEOM_CAPSULE:  # axis = local z

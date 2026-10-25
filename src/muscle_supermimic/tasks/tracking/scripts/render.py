@@ -1,9 +1,10 @@
 """Render videos of the human model, one per clip.
 
-* a rollout recorded by ``ms-eval --record``: the simulated human (solid, muscles drawn) with the
-  reference motion overlaid as a translucent ghost;
-* a motion clip (canonical or MS-Human-700 native .npz): kinematic replay of the reference alone, as
-  the motion library resamples it to 50 Hz, with a foot-ground clearance report (penetration / floating).
+* a rollout recorded by ``ms-eval --record`` (MS-Human-700, with or without locked hands, or MyoFullBody, told
+  apart by the size of its qpos): the simulated human (solid, muscles drawn) with the reference motion overlaid
+  as a translucent ghost;
+* an MS-Human-700 motion clip (canonical or native .npz): kinematic replay of the reference alone, as the motion
+  library resamples it to 50 Hz, with a foot-ground clearance report (penetration / floating).
 
   uv run ms-render traj.npz out_dir/ [--clips walk] [--seconds 10]
   uv run ms-render data/motions/walk.npz out_dir/ [--lock-hands]
@@ -17,14 +18,30 @@ import os
 import mujoco
 import numpy as np
 
-from muscle_supermimic.assets.robots.mshuman700 import compiled_model
-from muscle_supermimic.assets.robots.mshuman700.mshuman700_cfg import get_spec
+from muscle_supermimic.assets.robots import mshuman700, myofullbody
+from muscle_supermimic.assets.robots.mshuman700.mshuman700_cfg import get_spec as mshuman700_spec
+from muscle_supermimic.assets.robots.myofullbody.myofullbody_cfg import get_spec as myofullbody_spec
+from muscle_supermimic.tasks.tracking.scripts.retarget_myofullbody import geom_half_height
 from muscle_supermimic.utils.rotations import mat_to_quat
 
 GHOST_RGBA = (0.35, 0.6, 1.0, 0.3)
+# entity variants a rollout can come from: (spec, compiled entity model)
+VARIANTS = {
+    "MS-Human-700": (lambda: mshuman700_spec(), lambda: mshuman700.compiled_model()),
+    "MS-Human-700 locked hands": (lambda: mshuman700_spec(lock_hands=True), lambda: mshuman700.compiled_model(lock_hands=True)),
+    "MyoFullBody": (lambda: myofullbody_spec(), lambda: myofullbody.compiled_model()),
+}
+FOOT_BODIES = ("calcn_r", "toes_r", "calcn_l", "toes_l")
 
 
-def build_scene(lock_hands: bool, ghost: bool = True) -> mujoco.MjModel:
+def foot_geoms(m: mujoco.MjModel, entity: mujoco.MjModel) -> list[int]:
+    """The scene's robot copies of the entity's foot collision geoms."""
+    names = [entity.geom(g).name for g in range(entity.ngeom)
+             if entity.geom_contype[g] and entity.body(entity.geom_bodyid[g]).name in FOOT_BODIES]  # fmt: skip
+    return [m.geom(f"robot/{n}").id for n in names]
+
+
+def build_scene(spec_fn, ghost: bool = True) -> mujoco.MjModel:
     scene = mujoco.MjSpec()
     scene.visual.global_.offwidth, scene.visual.global_.offheight = 1920, 1080
     scene.visual.headlight.ambient = [0.4, 0.4, 0.4]
@@ -36,7 +53,7 @@ def build_scene(lock_hands: bool, ghost: bool = True) -> mujoco.MjModel:
     scene.worldbody.add_geom(type=mujoco.mjtGeom.mjGEOM_PLANE, size=[0, 0, 0.05], material="grid")
     scene.worldbody.add_light(pos=[0, 0, 5], dir=[0, 0, -1], type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL, diffuse=[0.6, 0.6, 0.6])
     for prefix, is_ghost in (("robot/", False), ("ref/", True))[: 2 if ghost else 1]:
-        spec = get_spec(lock_hands=lock_hands)
+        spec = spec_fn()
         for geom in spec.geoms:
             geom.contype = geom.conaffinity = 0
             if is_ghost:
@@ -48,12 +65,11 @@ def build_scene(lock_hands: bool, ghost: bool = True) -> mujoco.MjModel:
     return scene.compile()
 
 
-def render(m: mujoco.MjModel, qpos: np.ndarray, width: int, height: int) -> tuple[list, np.ndarray]:
+def render(m: mujoco.MjModel, qpos: np.ndarray, width: int, height: int, feet: list[int]) -> tuple[list, np.ndarray]:
     """Frames of a qpos sequence (T, m.nq), the camera following robot/pelvis; also the lowest point of
-    the robot's foot collision geoms per frame [m]."""
+    the robot's foot collision geoms ``feet`` per frame [m]."""
     data = mujoco.MjData(m)
     pelvis = m.body("robot/pelvis").id
-    feet = [g for g in range(m.ngeom) if m.geom(g).name.startswith(("robot/calcn_skin", "robot/toes_skin"))]  # foot collision capsules
     renderer = mujoco.Renderer(m, height, width)
     cam = mujoco.MjvCamera()
     cam.type, cam.distance, cam.azimuth, cam.elevation = mujoco.mjtCamera.mjCAMERA_FREE, 3.2, 110.0, -12.0
@@ -62,7 +78,7 @@ def render(m: mujoco.MjModel, qpos: np.ndarray, width: int, height: int) -> tupl
     for x in qpos:
         data.qpos[:] = x
         mujoco.mj_forward(m, data)
-        foot_z.append(min(_lowest_point(m, data, g) for g in feet))
+        foot_z.append(min(data.geom_xpos[g, 2] - geom_half_height(m, data, g) for g in feet))
         target = data.xpos[pelvis].copy()
         lookat = target if lookat is None else 0.9 * lookat + 0.1 * target
         cam.lookat[:] = (lookat[0], lookat[1], 0.9)
@@ -71,31 +87,24 @@ def render(m: mujoco.MjModel, qpos: np.ndarray, width: int, height: int) -> tupl
     return frames, np.array(foot_z)
 
 
-def _lowest_point(m: mujoco.MjModel, data: mujoco.MjData, g: int) -> float:
-    z = data.geom_xpos[g, 2]
-    if m.geom_type[g] == mujoco.mjtGeom.mjGEOM_CAPSULE:  # axis = local z
-        return z - abs(data.geom_xmat[g, 8]) * m.geom_size[g, 1] - m.geom_size[g, 0]
-    if m.geom_type[g] == mujoco.mjtGeom.mjGEOM_SPHERE:
-        return z - m.geom_size[g, 0]
-    return z - m.geom_rbound[g]
-
-
 def replay_motion(path: str, out_dir: str, lock_hands: bool, seconds: float | None, width: int, height: int):
     import mediapy
 
     from muscle_supermimic.tasks.tracking.mdp.kinematics import SkeletonKinematics
     from muscle_supermimic.tasks.tracking.mdp.motion import MotionLib
 
-    kin = SkeletonKinematics(("pelvis",), "cpu", compiled_model(lock_hands=lock_hands))
+    entity = mshuman700.compiled_model(lock_hands=lock_hands)
+    kin = SkeletonKinematics(("pelvis",), "cpu", entity)
     mot = MotionLib.from_path(path, kin, 0.02, "cpu")
     q_full, _ = kin.full_joint_state(mot.q, mot.qd)
     qpos = torch_cat(mot.root_p, mat_to_quat(mot.root_R @ kin.R_off.T), q_full)
-    m = build_scene(lock_hands, ghost=False)
+    m = build_scene(lambda: mshuman700_spec(lock_hands=lock_hands), ghost=False)
     for c, name in enumerate(mot.names):
         s, n = int(mot.clip_start[c]), int(mot.clip_len[c])
         n = min(n, int(seconds * 50)) if seconds else n
-        frames, foot_z = render(m, qpos[s : s + n], width, height)
-        out = os.path.join(out_dir, f"{name}_reference.mp4")
+        frames, foot_z = render(m, qpos[s : s + n], width, height, foot_geoms(m, entity))
+        out = os.path.join(out_dir, f"{name}_reference.mp4")  # clip names can hold subfolders
+        os.makedirs(os.path.dirname(out), exist_ok=True)
         mediapy.write_video(out, frames, fps=50)
         lo, med, hi = np.percentile(foot_z, [1, 50, 99])
         print(f"{out}: {n} frames ({n / 50:.1f} s); lowest foot point per frame [m]: 1% {lo:+.3f}, median {med:+.3f}, "
@@ -128,17 +137,20 @@ def main():
     qpos, f, alive, ref = d["qpos"], d["f"], d["alive"], d["ref_qpos"]
     fps = float(d["fps"]) if "fps" in d.files else 50.0  # control rate of the rollout
     nq = qpos.shape[-1]
-    lock_hands = next(lh for lh in (False, True) if compiled_model(lock_hands=lh).nq == nq)
-    m = build_scene(lock_hands)
+    variant = next(k for k, (_, model) in VARIANTS.items() if model().nq == nq)
+    spec_fn, entity = VARIANTS[variant][0], VARIANTS[variant][1]()
+    m = build_scene(spec_fn)
     assert m.nq == 2 * nq
+    print(f"{variant} rollout")
     for c, name in enumerate(d["names"]):
         if args.clips and name not in args.clips:
             continue
         steps = np.nonzero(alive[:, c])[0]
         if args.seconds:
             steps = steps[: int(args.seconds * fps)]
-        frames, _ = render(m, np.concatenate((qpos[steps, c], ref[f[steps, c]]), -1), args.width, args.height)
-        out = os.path.join(args.out_dir, f"{name}.mp4")
+        frames, _ = render(m, np.concatenate((qpos[steps, c], ref[f[steps, c]]), -1), args.width, args.height, foot_geoms(m, entity))
+        out = os.path.join(args.out_dir, f"{name}.mp4")  # clip names can hold subfolders
+        os.makedirs(os.path.dirname(out), exist_ok=True)
         mediapy.write_video(out, frames, fps=fps)
         fell = len(steps) < (d["clip_len"][c] - 1) and not args.seconds
         print(f"{out}: {len(frames)} frames ({len(frames) / fps:.1f} s){' -- fell' if fell else ''}")
