@@ -140,8 +140,9 @@ function lineChart(host, o) {
       const t = el('text', { x: x(b.to) + 4, y: H - m.b - 6, class: 'ref-label' }, svg);
       t.textContent = b.label;
     }
+    const sx = (s) => (s.x || o.x).slice(0, s.values.length);  // each series on its own x, or on the shared grid
     for (const s of o.series) {
-      const xs = o.x.slice(0, s.values.length);  // a series may end before the grid does
+      const xs = sx(s);
       const d = xs.map((xv, i) => `${i ? 'L' : 'M'}${x(xv).toFixed(1)},${y(s.values[i]).toFixed(1)}`).join('');
       const p = el('path', { d, fill: 'none', 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
       p.style.stroke = s.color;
@@ -152,8 +153,8 @@ function lineChart(host, o) {
         });
       }
       if (s.endLabel) {
-        const i = o.x.length - 1;
-        const t = el('text', { x: x(o.x[i]) + 6, y: y(s.values[i]) + 4, class: 'direct-label' }, svg);
+        const i = xs.length - 1;
+        const t = el('text', { x: x(xs[i]) + 6, y: y(s.values[i]) + 4, class: 'direct-label' }, svg);
         t.textContent = s.name;
       }
     }
@@ -163,7 +164,13 @@ function lineChart(host, o) {
       const t = el('text', { x: x(mk.x) + (mk.anchor === 'end' ? -8 : 8), y: y(mk.y) + (mk.dy ?? -8), 'text-anchor': mk.anchor || 'start', class: 'direct-label' }, svg);
       t.textContent = mk.label;
     }
-    // crosshair: snaps to the nearest x
+    // crosshair: snaps to the nearest data x of any series; each series shows its point nearest to it
+    const allX = [...new Set(o.series.flatMap(sx))].sort((a, b) => a - b);
+    const nearest = (xs, v) => {
+      let b = 0;
+      for (let i = 1; i < xs.length; i++) if (Math.abs(xs[i] - v) < Math.abs(xs[b] - v)) b = i;
+      return b;
+    };
     const cross = el('line', { y1: m.t, y2: H - m.b, class: 'crosshair', visibility: 'hidden' }, svg);
     const dots = o.series.map((s) => {
       const c = el('circle', { r: 4, 'stroke-width': 2, visibility: 'hidden' }, svg);
@@ -172,25 +179,25 @@ function lineChart(host, o) {
     });
     let idx = -1;
     const show = (i) => {
-      idx = Math.max(0, Math.min(o.x.length - 1, i));
-      const px = x(o.x[idx]);
+      idx = Math.max(0, Math.min(allX.length - 1, i));
+      const xv = allX[idx], px = x(xv), rows = [], ys = [];
       cross.setAttribute('x1', px); cross.setAttribute('x2', px); cross.setAttribute('visibility', 'visible');
-      const here = o.series.filter((s) => idx < s.values.length);
       o.series.forEach((s, k) => {
-        const on = idx < s.values.length;
+        const xs = sx(s), gap = xs.length > 1 ? (xs[xs.length - 1] - xs[0]) / (xs.length - 1) : 0;
+        const on = xs.length > 0 && xv >= xs[0] - gap / 2 && xv <= xs[xs.length - 1] + gap / 2;  // within the series' span
         dots[k].setAttribute('visibility', on ? 'visible' : 'hidden');
-        if (on) { dots[k].setAttribute('cx', px); dots[k].setAttribute('cy', y(s.values[idx])); }
+        if (!on) return;
+        const jx = nearest(xs, xv);
+        dots[k].setAttribute('cx', x(xs[jx])); dots[k].setAttribute('cy', y(s.values[jx]));
+        rows.push({ name: s.name, value: (o.yFmt || compact)(s.values[jx]), color: s.color }), ys.push(y(s.values[jx]));
       });
-      const rows = here.map((s) => ({ name: s.name, value: (o.yFmt || compact)(s.values[idx]), color: s.color }));
-      tip.show(px * plot.clientWidth / W, Math.min(...here.map((s) => y(s.values[idx]))) * plot.clientWidth / W, `${o.xName} ${(o.xFmt || compact)(o.x[idx])}`, rows);
+      tip.show(px * plot.clientWidth / W, Math.min(...ys) * plot.clientWidth / W, `${o.xName} ${(o.xFmt || compact)(xv)}`.trim(), rows);
     };
     const hide = () => { cross.setAttribute('visibility', 'hidden'); dots.forEach((d) => d.setAttribute('visibility', 'hidden')); tip.hide(); };
     const hit = el('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent' }, svg);
     hit.addEventListener('pointermove', (e) => {
-      const box = svg.getBoundingClientRect(), px = ((e.clientX - box.left) * W) / box.width, xv = x.invert(px);
-      let best = 0;
-      for (let i = 1; i < o.x.length; i++) if (Math.abs(o.x[i] - xv) < Math.abs(o.x[best] - xv)) best = i;
-      show(best);
+      const box = svg.getBoundingClientRect(), px = ((e.clientX - box.left) * W) / box.width;
+      show(nearest(allX, x.invert(px)));
     });
     hit.addEventListener('pointerleave', hide);
     svg.addEventListener('keydown', (e) => {
@@ -254,65 +261,70 @@ function charts() {
   if (!D) return;
   const S1 = 'var(--series-1)', S2 = 'var(--series-2)', MUTED = 'var(--bar-muted)';
   const run = D.run;
-  const upto = (n) => run.iteration.findIndex((v) => v > n);
-  const k12 = upto(12000);
-  const iters = run.iteration.slice(0, k12);
-  const itFmt = (v) => (v >= 1000 ? (v / 1000).toFixed(v % 1000 ? 1 : 0) + 'k' : String(v));
-  const wmBand = [{ from: 0, to: 500, label: 'WM only' }];
+  const hFmt = (v) => `${Number.isInteger(v) ? v : v.toFixed(1)} h`;
+  const H_LABEL = 'wall-clock training time (hours)';
+  const at = (r, it) => r.wall_h[r.iteration.indexOf(it)];
+  const k12 = run.iteration.findIndex((v) => v > 12000);
+  const hours = run.wall_h.slice(0, k12);
+  const wmBand = (h) => [{ from: 0, to: h, label: 'WM only' }];
 
   const h1 = document.getElementById('chart-eplen');
   if (h1) {
-    lineChart(h1, { x: iters, xDomain: [0, 12000], yDomain: [0, 300], xLabel: 'training iteration', xName: 'iteration', xFmt: itFmt,
-      series: [{ name: 'steps', values: run.ep_len.slice(0, k12), color: S1 }], bands: wmBand,
-      markers: [{ x: 12000, y: run.ep_len[k12 - 1], label: 'model_012000', color: S1, anchor: 'end', dy: 22 }],
-      yFmt: (v) => v.toFixed(0), aria: 'Mean training episode length rises from about 60 to 268 steps over 12000 iterations' });
-    dataTable(h1, ['iteration', 'episode length (steps)', 'ending in failure (%)'],
-      iters.map((v, i) => [v, run.ep_len[i], run.fail_pct[i]]).filter((r) => r[0] % 1000 === 0));
+    lineChart(h1, { x: hours, xDomain: [0, 11], yDomain: [0, 300], xLabel: H_LABEL, xName: '', xFmt: hFmt,
+      series: [{ name: 'steps', values: run.ep_len.slice(0, k12), color: S1 }], bands: wmBand(at(run, 500)),
+      markers: [{ x: at(run, 12000), y: run.ep_len[k12 - 1], label: 'model_012000', color: S1, anchor: 'end', dy: 22 }],
+      yFmt: (v) => v.toFixed(0), aria: 'Mean training episode length rises from about 60 to 268 steps over 10.7 hours of training' });
+    dataTable(h1, ['iteration', 'hours', 'episode length (steps)', 'ending in failure (%)'],
+      run.iteration.slice(0, k12).map((v, i) => [v, hours[i].toFixed(2), run.ep_len[i], run.fail_pct[i]]).filter((r) => r[0] % 1000 === 0));
   }
   const h2 = document.getElementById('chart-fail');
-  if (h2) lineChart(h2, { x: iters, xDomain: [0, 12000], yDomain: [0, 100], xLabel: 'training iteration', xName: 'iteration', xFmt: itFmt,
-    series: [{ name: '% of episodes', values: run.fail_pct.slice(0, k12), color: S1 }], bands: wmBand,
-    markers: [{ x: 12000, y: run.fail_pct[k12 - 1], label: `${run.fail_pct[k12 - 1].toFixed(0)} %`, color: S1, anchor: 'end' }],
-    yFmt: (v) => v.toFixed(0) + ' %', aria: 'Share of training episodes ending in a failure falls from about 85 % to 7 % over 12000 iterations' });
+  if (h2) lineChart(h2, { x: hours, xDomain: [0, 11], yDomain: [0, 100], xLabel: H_LABEL, xName: '', xFmt: hFmt,
+    series: [{ name: '% of episodes', values: run.fail_pct.slice(0, k12), color: S1 }], bands: wmBand(at(run, 500)),
+    markers: [{ x: at(run, 12000), y: run.fail_pct[k12 - 1], label: `${run.fail_pct[k12 - 1].toFixed(0)} %`, color: S1, anchor: 'end' }],
+    yFmt: (v) => v.toFixed(0) + ' %', aria: 'Share of training episodes ending in a failure falls from about 85 % to 7 % over 10.7 hours of training' });
 
   // MS-Human-700: two seeds with the state-gradient clip against the run without it
   const ms = D.mshuman;
   const GRAY = 'var(--text-light)';
   const runs = [['s42', 'clip, seed 42', S1], ['s1', 'clip, seed 1', S2], ['noclip', 'no clip, seed 42', GRAY]];
+  const msEnd = ms ? Math.ceil(Math.max(...runs.map(([k]) => ms.train[k].wall_h.at(-1))) * 2) / 2 : 1;
   const h7 = document.getElementById('chart-ms-eplen');
   if (h7 && ms) {
-    const grid = ms.train.noclip.iteration.filter((v) => v <= 6000);
-    const upto6k = (a, r) => r.ep_len.slice(0, r.iteration.filter((v) => v <= 6000).length);
-    lineChart(h7, { x: grid, xDomain: [0, 6000], yDomain: [0, 300], xLabel: 'training iteration', xName: 'iteration', xFmt: itFmt,
-      series: runs.map(([k, name, color]) => ({ name, color, values: upto6k(k, ms.train[k]) })), yFmt: (v) => v.toFixed(0), bands: wmBand,
-      aria: 'With the clip, episode length climbs past 250 steps by iteration 3000 in both seeds; without it, it stays near 90 through iteration 6000' });
-    dataTable(h7, ['iteration'].concat(runs.map((r) => r[1])),
-      grid.map((v, i) => [v].concat(runs.map(([k]) => ms.train[k].ep_len[i] ?? '–'))).filter((r) => r[0] % 500 === 0));
+    lineChart(h7, { xDomain: [0, msEnd], yDomain: [0, 300], xLabel: H_LABEL, xName: '', xFmt: hFmt, bands: wmBand(at(ms.train.s42, 500)),
+      series: runs.map(([k, name, color]) => ({ name, color, x: ms.train[k].wall_h, values: ms.train[k].ep_len })), yFmt: (v) => v.toFixed(0),
+      aria: 'With the clip, episode length climbs past 250 steps within 2 hours in both seeds; without it, it stays near 90 through 4 hours' });
+    dataTable(h7, ['iteration'].concat(runs.map((r) => `${r[1]}: steps (hours)`)),
+      ms.train.noclip.iteration.filter((v) => v % 500 === 0).map((v) => [v].concat(runs.map(([k]) => {
+        const i = ms.train[k].iteration.indexOf(v);
+        return i < 0 ? '–' : `${ms.train[k].ep_len[i]} (${ms.train[k].wall_h[i].toFixed(2)})`;
+      }))));
   }
   const h8 = document.getElementById('chart-ms-eval');
   if (h8 && ms) {
-    const grid = ms.eval.noclip.iteration;
-    lineChart(h8, { x: grid, xDomain: [0, 6000], yDomain: [0, 1], xLabel: 'checkpoint (training iteration)', xName: 'checkpoint', xFmt: itFmt,
-      series: runs.map(([k, name, color]) => ({ name, color, values: ms.eval[k].norm_return, dots: true })), yFmt: (v) => v.toFixed(2),
-      aria: 'Held-out normalized return: with the clip 0.61 at iteration 3000 (seed 42); without it 0.07 to 0.18 through iteration 5500' });
-    dataTable(h8, ['checkpoint'].concat(runs.map((r) => `${r[1]}: return (clips tracked)`)),
-      grid.map((v, i) => [v].concat(runs.map(([k]) => (i < ms.eval[k].norm_return.length ? `${ms.eval[k].norm_return[i].toFixed(2)} (${ms.eval[k].tracked[i]})` : '–')))));
+    lineChart(h8, { xDomain: [0, msEnd], yDomain: [0, 1], xLabel: H_LABEL, xName: '', xFmt: hFmt,
+      series: runs.map(([k, name, color]) => ({ name, color, x: ms.eval[k].wall_h, values: ms.eval[k].norm_return, dots: true })), yFmt: (v) => v.toFixed(2),
+      aria: 'Held-out normalized return: with the clip 0.61 after 1.7 hours (seed 42); without it 0.07 to 0.18 through 3.7 hours' });
+    dataTable(h8, ['checkpoint'].concat(runs.map((r) => `${r[1]}: return (clips tracked) at hours`)),
+      ms.eval.noclip.iteration.map((v) => [v].concat(runs.map(([k]) => {
+        const i = ms.eval[k].iteration.indexOf(v);
+        return i < 0 ? '–' : `${ms.eval[k].norm_return[i].toFixed(2)} (${ms.eval[k].tracked[i]}) at ${ms.eval[k].wall_h[i].toFixed(2)}`;
+      }))));
   }
 
   // the collapse: iterations 11000-14000
-  const a = run.iteration.findIndex((v) => v >= 11000), b = upto(14000);
-  const xs = run.iteration.slice(a, b);
+  const a = run.iteration.findIndex((v) => v >= 11000), b = run.iteration.findIndex((v) => v > 14000);
+  const xs = run.wall_h.slice(a, b), dom = [Math.floor(xs[0] * 2) / 2, Math.ceil(xs.at(-1) * 2) / 2];
   const h3 = document.getElementById('chart-collapse-len');
-  if (h3) lineChart(h3, { x: xs, xDomain: [11000, 14000], yDomain: [0, 300], xLabel: 'training iteration', xName: 'iteration', xFmt: itFmt, height: 170,
+  if (h3) lineChart(h3, { x: xs, xDomain: dom, yDomain: [0, 300], xLabel: H_LABEL, xName: '', xFmt: hFmt, height: 170,
     series: [{ name: 'steps', values: run.ep_len.slice(a, b), color: S1 }], yFmt: (v) => v.toFixed(0),
-    aria: 'Episode length stays near 270 steps until iteration 12700, then drops to about 110' });
+    aria: 'Episode length stays near 270 steps until 11.3 hours, then drops to about 110' });
   const h4 = document.getElementById('chart-collapse-grad');
   if (h4) {
-    lineChart(h4, { x: xs, xDomain: [11000, 14000], yDomain: [0.1, 1e5], yLog: true, xLabel: 'training iteration', xName: 'iteration', xFmt: itFmt, height: 170,
+    lineChart(h4, { x: xs, xDomain: dom, yDomain: [0.1, 1e5], yLog: true, xLabel: H_LABEL, xName: '', xFmt: hFmt, height: 170,
       series: [{ name: 'gradient norm', values: run.pi_gradnorm.slice(a, b), color: S2 }], yFmt: compact,
-      aria: 'Policy-gradient norm stays near 1 until iteration 12700, then jumps to 10^3-10^4' });
-    dataTable(h4, ['iteration', 'episode length (steps)', 'policy-gradient norm, before clipping'],
-      xs.map((v, i) => [v, run.ep_len[a + i], compact(run.pi_gradnorm[a + i])]).filter((r) => r[0] % 250 === 0));
+      aria: 'Policy-gradient norm stays near 1 until 11.3 hours (iteration 12700), then jumps to 10^3-10^4' });
+    dataTable(h4, ['iteration', 'hours', 'episode length (steps)', 'policy-gradient norm, before clipping'],
+      run.iteration.slice(a, b).map((v, i) => [v, xs[i].toFixed(2), run.ep_len[a + i], compact(run.pi_gradnorm[a + i])]).filter((r) => r[0] % 250 === 0));
   }
 
   // per-step growth of the state gradient, top 1 % vs the rest
