@@ -2,6 +2,8 @@
 name = "muscle-supermimic"
 version = "0.1.0"
 description = "SuperMimic (world-model BPTT motion tracking) for the MS-Human-700 whole-body musculoskeletal model, on mjlab / MuJoCo-Warp."
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
