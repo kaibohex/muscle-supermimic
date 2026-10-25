@@ -224,14 +224,18 @@ class SuperMimicRunner:
         set_requires_grad(self.wm, False)
         set_requires_grad(self.critic, False)
         S0 = S
-        Ss, As, Aps, Fs, Xs = [], [], [], [], []
+        Ss, As, Aps, Fs = [], [], [], []
+        if c.use_critic:  # critic inputs of S_0 .. S_H, written in place (MS-Human-700: ~2 GB at 4096 x 33 states)
+            X = torch.empty(HZ + 1, B, self.critic.norm.mean.shape[0], device=dev)
         step = self.imag_step
         if c.remat_imagination:  # recompute each step in the backward pass instead of keeping its activations
             step = lambda *x: torch.utils.checkpoint.checkpoint(self.imag_step, *x, use_reentrant=False)  # noqa: E731
-        for _ in range(HZ):
+        for t in range(HZ):
             Aps.append(a_last)
             S, a_last, hist, f, x = step(S, hist, f, a_last)
-            Ss.append(S), As.append(a_last), Fs.append(f), Xs.append(x)
+            Ss.append(S), As.append(a_last), Fs.append(f)
+            if c.use_critic:
+                X[t] = x
         flat = lambda xs: torch.stack(xs).flatten(0, 1)  # noqa: E731  (H*B, ...)
         S_all = tuple(flat([St[i] for St in Ss]) for i in range(len(S0)))
         r, d = self.reward_term(S_all, flat(Fs), flat(As), flat(Aps))
@@ -245,6 +249,7 @@ class SuperMimicRunner:
         rews, dones = r.detach(), d.detach()
         if c.use_critic:
             x_last = self.critic_input(S, f, a_last)
+            X[HZ] = x_last.detach()
             J = J + (c.gamma**HZ) * surv * self.value(x_last)
         loss = -J.mean()
         self.opt_pi.zero_grad(set_to_none=True)
@@ -258,10 +263,11 @@ class SuperMimicRunner:
         # ---------------- critic: GAE(lambda) targets over the imagined transitions ----------------
         v_loss = torch.zeros((), device=dev)
         if c.use_critic:
-            X = torch.stack([*Xs, x_last.detach()])  # critic inputs of S_0 .. S_H, from the imagination itself
-            self.critic.norm.update(X)
+            # one imagined step at a time: a normalized copy of all (H+1) x B inputs is as large as X itself
+            for x in X:
+                self.critic.norm.update(x)
             with torch.no_grad():
-                V = self.value(X)
+                V = torch.stack([self.value(x) for x in X])
                 R = V[-1]
                 targets = []
                 for t in range(HZ - 1, -1, -1):
