@@ -1,8 +1,9 @@
 """Checkpoint evaluation (SuperMimic paper Appendix F.1) on every clip of the motion library.
 
-Each clip plays once from its first frame (one env per clip), deterministic policy, no noise. A clip
-fails if its rollout triggers a training termination (root height / tilt). Normalized return is the
-undiscounted reward sum divided by its maximum attainable value.
+Each clip plays once from its first frame (one env per clip), deterministic policy; ``--action-noise``
+adds training's exploration noise instead (N(0, sigma^2) on the excitations, clipped to [0, 1]). A clip
+fails if its rollout triggers a training termination. Normalized return is the undiscounted reward sum
+divided by its maximum attainable value.
 
   uv run ms-eval --checkpoint logs/rsl_rl/mshuman700_tracking/<run>/model_014000.pt --motion-file data/motions
   uv run ms-eval --run-dir logs/rsl_rl/mshuman700_tracking/<run> --motion-file data/motions --watch
@@ -45,12 +46,13 @@ def build(task: str, motion_path: str, device: str):
 
 
 @torch.no_grad()
-def evaluate(env, runner, record: str | None = None) -> dict:
+def evaluate(env, runner, record: str | None = None, action_noise: float = 0.0, seed: int = 0) -> dict:
     u, cmd = env.unwrapped, runner.cmd
     m, C = cmd.motion, len(cmd.motion.names)
     ids = torch.arange(C, device=u.device)
     obs = TensorDict(u.reset(env_ids=ids)[0], batch_size=[C])
     policy = runner.get_inference_policy()
+    gen = torch.Generator(device=u.device).manual_seed(seed)
     ret = torch.zeros(C, device=u.device)
     done_eval = torch.zeros(C, dtype=torch.bool, device=u.device)
     failed = torch.zeros_like(done_eval)
@@ -63,7 +65,10 @@ def evaluate(env, runner, record: str | None = None) -> dict:
             qpos[:, :3] -= u.scene.env_origins
             # clone: cmd.f is updated in place and .cpu() aliases it on a CPU device
             traj["qpos"].append(qpos.cpu()), traj["f"].append(cmd.f.clone().cpu()), traj["alive"].append(alive.cpu())
-        obs, rew, dones, _ = env.step(policy(obs))
+        a = policy(obs)
+        if action_noise > 0:  # as the runner collects: noise on the excitations, clipped
+            a = (a + action_noise * torch.randn(a.shape, generator=gen, device=a.device)).clamp(0.0, 1.0)
+        obs, rew, dones, _ = env.step(a)
         ret += torch.where(alive, rew, 0.0)
         failed |= u.reset_terminated & alive
         done_eval |= dones.bool()
@@ -96,13 +101,15 @@ def main():
     ap.add_argument("--watch", action="store_true", help="keep polling --run-dir for new checkpoints")
     ap.add_argument("--record", default=None, help="save trajectories (npz) of --checkpoint")
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
+    ap.add_argument("--action-noise", type=float, default=0.0, help="exploration noise std on the excitations (training: 0.1)")
+    ap.add_argument("--seed", type=int, default=0, help="seed of the action noise")
     args = ap.parse_args()
     assert args.checkpoint or args.run_dir, "pass --checkpoint or --run-dir"
     env, runner = build(args.task, args.motion_file, args.device)
     C = len(runner.motion.names)
     if args.checkpoint:
         runner.load(args.checkpoint, load_cfg={"actor": True})
-        res = evaluate(env, runner, args.record)
+        res = evaluate(env, runner, args.record, args.action_noise, args.seed)
         print(json.dumps({k: v for k, v in res.items() if k != "per_clip"}, indent=1))
         return
     out_csv = os.path.join(args.run_dir, "eval.csv")
@@ -118,7 +125,7 @@ def main():
                 continue
             ck = runner.load(c, load_cfg={"actor": True})
             t0 = time.time()
-            res = evaluate(env, runner)
+            res = evaluate(env, runner, action_noise=args.action_noise, seed=args.seed)
             line = (f"{it},{ck['wall_time'] / 3600:.4f},{ck['saved_at']},{time.strftime('%Y-%m-%d %H:%M:%S')},{res['norm_return']:.4f},"
                     f"{res['norm_return_framew']:.4f},{res['n_failed']},{'|'.join(res['failed'])}\n")  # fmt: skip
             open(out_csv, "a").write(line)
