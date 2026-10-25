@@ -61,6 +61,17 @@ def axis_angle_to_mat(axis: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
     ).reshape(angle.shape + (3, 3))  # fmt: skip
 
 
+def mv3(R: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+    """R x for (..., 3, 3) matrices and (..., 3) vectors, as a product and a sum: as a batched GEMM a 3x3 product is
+    slow on the GPU, and torch.compile cannot fuse it with its neighbours."""
+    return (R * x.unsqueeze(-2)).sum(-1)
+
+
+def mm3(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
+    """A B for (..., 3, 3) matrices, as a product and a sum (see :func:`mv3`)."""
+    return (A.unsqueeze(-1) * B.unsqueeze(-3)).sum(-2)
+
+
 def so3_exp(v: torch.Tensor) -> torch.Tensor:
     """Rotation vector (..., 3) -> matrix, smooth at zero."""
     theta2 = (v * v).sum(-1, keepdim=True)
@@ -70,7 +81,7 @@ def so3_exp(v: torch.Tensor) -> torch.Tensor:
     b = torch.where(small, 0.5 - theta2 / 24, (1 - torch.cos(theta)) / (theta2 + 1e-12))
     K = skew(v)
     eye = torch.eye(3, device=v.device, dtype=v.dtype).expand(K.shape)
-    return eye + a[..., None] * K + b[..., None] * (K @ K)
+    return eye + a[..., None] * K + b[..., None] * mm3(K, K)
 
 
 def so3_log(R: torch.Tensor) -> torch.Tensor:

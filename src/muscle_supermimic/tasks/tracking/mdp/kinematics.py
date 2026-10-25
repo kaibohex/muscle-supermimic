@@ -18,11 +18,7 @@ import numpy as np
 import torch
 
 from muscle_supermimic.assets.robots.model_info import ModelInfo, root_offset
-from muscle_supermimic.utils.rotations import axis_angle_to_mat, quat_to_mat
-
-
-def _mv(R: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-    return (R @ x.unsqueeze(-1)).squeeze(-1)
+from muscle_supermimic.utils.rotations import axis_angle_to_mat, mm3, mv3, quat_to_mat
 
 
 class SkeletonKinematics:
@@ -136,18 +132,18 @@ class SkeletonKinematics:
         for i in range(n):
             par = self.parent[i]
             if par < 0:
-                P[i], Rs[i], V[i], W[i] = p, R @ self.R_off.T, v, w
+                P[i], Rs[i], V[i], W[i] = p, mm3(R, self.R_off.T), v, w
                 continue
             Rp, pp = Rs[par], P[par]
-            pi = pp + _mv(Rp, self.off_p[i])
-            Ri = Rp @ self.off_R[i]
+            pi = pp + mv3(Rp, self.off_p[i])
+            Ri = mm3(Rp, self.off_R[i])
             vi = V[par] + torch.cross(W[par], pi - pp, dim=-1)
             wi = W[par]
             for jt in self.joints[i]:
                 kind, col = jt["src"]
                 qj = (q[..., col] if kind == "q" else qc[..., col]) - jt["qpos0"]
                 qdj = (qd[..., col] if kind == "q" else qdc[..., col]).unsqueeze(-1)
-                axis_w = _mv(Ri, jt["axis"])
+                axis_w = mv3(Ri, jt["axis"])
                 if jt["slide"]:
                     dp = axis_w * qj.unsqueeze(-1)
                     pi = pi + dp
@@ -155,13 +151,13 @@ class SkeletonKinematics:
                     continue
                 if jt["pos"] is None:
                     wi = wi + axis_w * qdj
-                    Ri = Ri @ axis_angle_to_mat(jt["axis"], qj)
+                    Ri = mm3(Ri, axis_angle_to_mat(jt["axis"], qj))
                     continue
-                anchor = pi + _mv(Ri, jt["pos"])
+                anchor = pi + mv3(Ri, jt["pos"])
                 va = vi + torch.cross(wi, anchor - pi, dim=-1)
                 wi = wi + axis_w * qdj
-                Ri = Ri @ axis_angle_to_mat(jt["axis"], qj)
-                pi = anchor - _mv(Ri, jt["pos"])
+                Ri = mm3(Ri, axis_angle_to_mat(jt["axis"], qj))
+                pi = anchor - mv3(Ri, jt["pos"])
                 vi = va + torch.cross(wi, pi - anchor, dim=-1)
             P[i], Rs[i], V[i], W[i] = pi, Ri, vi, wi
         idx = range(n) if all_bodies else self.tracked_idx

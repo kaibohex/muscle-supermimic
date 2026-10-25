@@ -52,6 +52,14 @@ class MotionCommand(CommandTerm):
         self.muscle = MuscleActivation(m, env.cfg.decimation, env.physics_dt, dev)
         self.geo = MuscleGeometry(m, dev)
         self.heads = TrackingHeads(self.kin, self.motion, self.geo, cfg.lookahead, cfg.stride)
+        # the shared pieces of each step's terms in one compiled call: observations with muscle geometry, rewards and
+        # terminations without (eager, they launch tens of thousands of small kernels per step). Not on sm_120 (RTX
+        # 5090): Triton 3.8 hits an LLVM assertion compiling the no-grad tendon-wrap kernels there.
+        cuda = str(self.device).startswith("cuda")
+        sm120 = cuda and torch.cuda.get_device_capability(self.device) >= (12, 0)
+        comp = torch.compile if cfg.compile and cuda and not sm120 else (lambda fn: fn)
+        self._shared_obs = comp(lambda S: self.heads.precompute(S, muscles=True))
+        self._shared_transition = comp(lambda S: self.heads.precompute(S, muscles=False))
         self.touch_sensor = env.scene[cfg.touch_sensor_name]
 
         # simulator addresses (global, from the scene's model)
@@ -76,6 +84,7 @@ class MotionCommand(CommandTerm):
         self.bin_G = torch.zeros(nb, device=dev)
         self.bin_w_avg = torch.full((nb,), 1.0 / nb, device=dev)
         self._ctx_step, self._ctx = -1, None
+        self._obs_ctx_step, self._obs_ctx = -1, None
 
     # ------------------------------------------------------------------ state
     @property
@@ -96,8 +105,14 @@ class MotionCommand(CommandTerm):
                 touch)  # fmt: skip
 
     def obs_ctx(self) -> StepCtx:
-        am = self._env.action_manager
-        return StepCtx(self.read_state(), self.f, am.action, am.prev_action)
+        """The current state against frame f, cached for all observation terms of one step: they share its
+        kinematics and muscle geometry. A reset or the command update (which move f or the state) drop it."""
+        step = self._env.common_step_counter
+        if self._obs_ctx is None or self._obs_ctx_step != step:
+            am = self._env.action_manager
+            self._obs_ctx, self._obs_ctx_step = StepCtx(self.read_state(), self.f.clone(), am.action, am.prev_action), step
+            self._obs_ctx.cache.update(self._shared_obs(self._obs_ctx.S))
+        return self._obs_ctx
 
     def transition_ctx(self) -> StepCtx:
         """The post-step state against frame f + 1, cached for all reward/termination terms of one step."""
@@ -107,6 +122,7 @@ class MotionCommand(CommandTerm):
             f1 = torch.minimum(self.f + 1, m.clip_end[m.clip_id[self.f]])
             am = self._env.action_manager
             self._ctx, self._ctx_step = StepCtx(self.read_state(), f1, am.action, am.prev_action), step
+            self._ctx.cache.update(self._shared_transition(self._ctx.S))
         return self._ctx
 
     # ------------------------------------------------------------------ reset
@@ -163,6 +179,7 @@ class MotionCommand(CommandTerm):
         self._env.sim.data.act[env_ids[:, None], self._act_adr] = self.cfg.init_activation
         self.f[env_ids] = frames
         self._just_reset[env_ids] = True
+        self._obs_ctx = None
 
     # ------------------------------------------------------------------ step
     def _update_command(self, env_ids: torch.Tensor | None) -> None:
@@ -177,6 +194,7 @@ class MotionCommand(CommandTerm):
         self.ep_ret += r
         self.f += stepped.long()
         self._just_reset[:] = False
+        self._obs_ctx = None
 
     def _update_metrics(self) -> None:
         pass
@@ -209,6 +227,9 @@ class MotionCommandCfg(MjlabMotionCommandCfg):
     bin_seconds: float = 1.0
     init_activation: float = 0.0
     """Muscle activation written at reset (MuJoCo's reset value is 0)."""
+    compile: bool = True
+    """torch.compile the kinematics and muscle geometry the terms share each step (CUDA only, and not on sm_120,
+    where Triton 3.8 fails to compile them)."""
     resampling_time_range: tuple[float, float] = (1.0e9, 1.0e9)
 
     def __post_init__(self):
