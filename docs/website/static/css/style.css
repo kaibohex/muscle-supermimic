@@ -110,6 +110,9 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .link-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; margin-bottom: 0.9rem; }
 .btn { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 1rem; border-radius: var(--radius); font-size: 0.85rem; font-weight: 500; color: var(--text); background: transparent; border: 1px solid var(--border); text-decoration: none; transition: border-color .15s; }
 .btn:hover { border-color: var(--text); }
+.btn.disabled { color: var(--text-light); cursor: default; }
+.btn.disabled:hover { border-color: var(--border); }
+.btn .soon { font-size: 0.72rem; font-weight: 500; color: var(--text-light); border: 1px solid var(--border); border-radius: 999px; padding: 0 0.45rem; }
 .btn svg { width: 15px; height: 15px; fill: currentColor; }
 .venue { font-size: 0.85rem; color: var(--text-light); letter-spacing: 0.02em; }
 
