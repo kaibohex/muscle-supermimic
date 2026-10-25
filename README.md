@@ -28,9 +28,8 @@ Research code, in progress.
 
 - **MyoFullBody** on MuscleMimic's KIT split (972 training clips): one run (Euler, 4096 envs, one RTX 5090)
   reached, at iteration 12000 (10.7 h), training episodes of 268 steps on average, 7 % of them ending in a
-  failure. Evaluated on whole clips from their first frame, 3 training clips score a normalized return of
-  0.79, and the 8000-iteration checkpoint 0.73 on 6 held-out clips, all without failure. An evaluation on all
-  108 held-out clips is to come.
+  failure. Evaluated on whole clips from their first frame, it scores a normalized return of 0.77 on
+  MuscleMimic's 108 held-out clips, 101 of them tracked to the end (0.79 on 3 training clips).
 - **MS-Human-700** (locked hands) on the same clips retargeted to it: training.
 - **Known issue**: the policy gradient through imagination can explode along the loop muscle-velocity
   observation → policy → activation → world model; the MyoFullBody run above collapsed that way from
