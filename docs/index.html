@@ -35,11 +35,10 @@
   <div class="container medium">
     <figure>
       <video class="video" src="static/videos/teaser.mp4" poster="static/videos/teaser_poster.jpg" muted loop playsinline preload="metadata" data-autoplay
-        aria-label="MyoFullBody, with its muscles drawn in red, tracks three motion-capture clips beside the translucent reference: turning left, walking forward, walking backward"></video>
+        aria-label="MyoFullBody, with its muscles drawn in red, tracks three motion-capture clips: turning left, walking forward, walking backward"></video>
       <figcaption><strong>MyoFullBody tracking three training clips.</strong>Turning left, walking forward and walking backward,
-        from MuscleMimic's KIT set. The solid body with its 354 muscles in red is the simulation, driven by the policy, which sets
-        every muscle's excitation 100 times a second; the translucent blue skeleton is the reference motion. All three clips are
-        tracked to the end, at a normalized return of 0.79.</figcaption>
+        from MuscleMimic's KIT set: the simulated body with its 354 muscles, driven by the policy, which sets every muscle's
+        excitation 100 times a second. All three clips are tracked to the end, at a normalized return of 0.79.</figcaption>
     </figure>
   </div>
 </section>
@@ -82,7 +81,7 @@
       </div>
       <figure>
         <video class="video wide43" src="static/videos/retarget_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay
-          aria-label="The same turning clip on MyoFullBody (left, tan) and on MS-Human-700 (right, white), seen from behind"></video>
+          aria-label="The same turning clip on MyoFullBody (left, white bones) and on MS-Human-700 (right, tan bones)"></video>
         <figcaption><strong>One clip, two bodies.</strong>MuscleMimic's retargeted KIT motion on MyoFullBody (left) and, retargeted
           from it by <code>ms-retarget-myofullbody</code>, on MS-Human-700 (right). The 27 leg and arm angles carry over exactly,
           spine and wrist flexion are fitted through the differentiable kinematics, and each clip is lowered by 0.74 cm so that the
@@ -191,8 +190,7 @@
     <h3>Held-out clips</h3>
     <p>On MuscleMimic's 108 test clips, never seen in training, the normalized return is 0.77 and 101 clips are tracked to the
       end. The 7 failures are three clockwise circles, two right turns, one walk and one walk along a handrail beam. Shown: for
-      three kinds of motion, the first test clip in the list that was tracked to the end, not picked by score. In the run, the
-      body falls behind the reference without failing.</p>
+      three kinds of motion, the first test clip in the list that was tracked to the end, not picked by score.</p>
     <div class="three-col" style="margin-top: 1rem;">
       <figure><video class="video square" src="static/videos/test_walking_run06.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Running"></video>
         <div class="clip-label">Run · <code>348/walking_run06</code></div></figure>
