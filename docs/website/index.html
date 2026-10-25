@@ -16,7 +16,8 @@
 <header class="hero">
   <div class="container">
     <h1 class="title">muscle-supermimic</h1>
-    <p class="subtitle">Whole-body motion tracking for musculoskeletal humanoids with one differentiable world model</p>
+    <!-- EDIT: the training time may change as the runs improve -->
+    <p class="subtitle">Whole-body motion tracking for musculoskeletal humanoids with one differentiable world model, on one RTX&nbsp;5090 in 4&nbsp;hours</p>
     <!-- EDIT: authors (and an affiliations line, .affiliations) once decided; the BibTeX below names them too -->
     <div class="author-list"><span class="author">The muscle-supermimic Authors</span></div>
     <p class="dev-note"><i aria-hidden="true"></i>This project is under active development: its results keep improving, and the
@@ -39,11 +40,11 @@
   <div class="container">
     <figure>
       <video class="video" src="static/videos/teaser.mp4" poster="static/videos/teaser_poster.jpg" muted loop playsinline preload="metadata" data-autoplay
-        aria-label="MS-Human-700, with its muscles drawn in red, tracks three motion-capture clips: turning left, walking forward, walking backward"></video>
-      <figcaption><strong>MS-Human-700 tracking three training clips.</strong>Turning left, walking forward and walking backward,
-        from MuscleMimic's KIT set, retargeted to MS-Human-700: the simulated body with its 694 muscles, driven by the policy,
-        which sets every muscle's excitation 100 times a second. All three clips are tracked to the end, at a normalized return
-        of 0.86 (iteration 6500). MyoFullBody joins this view once its run has trained.</figcaption>
+        aria-label="Three motion-capture clips, turning left, walking forward and walking backward, each tracked side by side by MyoFullBody (left, white bones) and MS-Human-700 (right, tan bones), their muscles drawn in red"></video>
+      <!-- EDIT: MyoFullBody's half is model_012000 of an earlier run (no state-gradient clip); re-render with the current run -->
+      <figcaption><strong>MyoFullBody and MS-Human-700 tracking three training clips.</strong>Turning left, walking forward and
+        walking backward, from MuscleMimic's KIT set; in each pair MyoFullBody (354 muscles) on the left and MS-Human-700 (694
+        muscles) on the right, each driven by its own policy.</figcaption>
     </figure>
   </div>
 </section>
@@ -171,7 +172,7 @@
     <h2>MyoFullBody</h2>
     <p>One run on MuscleMimic's KIT split, 972 training clips (1.5 h of motion), 4096 parallel environments, MuscleMimic's solver
       settings (Euler, 100 / 50 iterations), on one RTX 5090. The run has just started; the curves below are a snapshot at
-      iteration 500, and the held-out evaluation, the clips and the checkpoint follow as it trains.</p>
+      iteration 900.</p>
     <div class="two-col" style="margin-top: 1.2rem;">
       <div class="chart" id="chart-eplen">
         <div class="chart-title">Mean training episode length</div>
@@ -181,6 +182,38 @@
         <div class="chart-title">Training episodes ending in a failure</div>
         <div class="chart-sub">% of finished episodes, per 50 iterations</div>
       </div>
+    </div>
+    <!-- EDIT: everything below is model_012000 of an earlier run; replace it with the current run's checkpoint -->
+    <h3>An earlier run's checkpoint</h3>
+    <p>Until this run has trained, the numbers and clips below come from an earlier run with the same settings but without the
+      state-gradient clip: its checkpoint of iteration 12000, after 10.7 hours on one RTX 5090. Evaluation runs every clip once
+      from its first frame without exploration noise.</p>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Training episode length, iteration 12000</div><div class="stat-value">268<small>steps (2.7 s)</small></div></div>
+      <div class="stat"><div class="stat-label">Training episodes ending in a failure</div><div class="stat-value">7 %</div></div>
+      <div class="stat"><div class="stat-label">Normalized return, 3 training clips</div><div class="stat-value">0.79<small>0 failed</small></div></div>
+      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips</div><div class="stat-value">0.77<small>7 failed</small></div></div>
+    </div>
+    <h3>Training clips</h3>
+    <div class="three-col">
+      <figure><video class="video square" src="static/videos/train_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning left"></video>
+        <div class="clip-label">Turn left · <code>359/turn_left05</code></div></figure>
+      <figure><video class="video square" src="static/videos/train_walk_forward05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking forward"></video>
+        <div class="clip-label">Walk forward · <code>11/WalkingStraightForwards05</code></div></figure>
+      <figure><video class="video square" src="static/videos/train_walk_backward04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking backward"></video>
+        <div class="clip-label">Walk backward · <code>7/WalkingStraightBackwards04</code></div></figure>
+    </div>
+    <h3>Held-out clips</h3>
+    <p>On MuscleMimic's 108 test clips, never seen in training, the normalized return is 0.77 and 101 clips are tracked to the
+      end. The 7 failures are three clockwise circles, two right turns, one walk and one walk along a handrail beam. Shown: for
+      three kinds of motion, the first test clip in the list that was tracked to the end, not picked by score.</p>
+    <div class="three-col" style="margin-top: 1rem;">
+      <figure><video class="video square" src="static/videos/test_walking_run06.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Running"></video>
+        <div class="clip-label">Run · <code>348/walking_run06</code></div></figure>
+      <figure><video class="video square" src="static/videos/test_turn_right09.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning right"></video>
+        <div class="clip-label">Turn right · <code>317/turn_right09</code></div></figure>
+      <figure><video class="video square" src="static/videos/test_ccw_circle04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking a counter-clockwise circle"></video>
+        <div class="clip-label">Counter-clockwise circle · <code>4/WalkInCounterClockwiseCircle04</code></div></figure>
     </div>
   </div>
 </section>
