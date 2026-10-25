@@ -194,11 +194,10 @@ function charts() {
     series: [{ name: 'steps', values: mf.ep_len, color: S1 }], bands: wmBand(at(mf, 500)),
     markers: ck ? [{ x: mf.wall_h[k], y: mf.ep_len[k], label: ckName, color: S1, anchor: 'end', dy: 22 }] : [],
     yFmt: (v) => v.toFixed(0), aria: `Mean training episode length rises from about 60 to ${mf.ep_len[k].toFixed(0)} steps in ${mf.wall_h[k].toFixed(1)} hours of training` });
-  const h2 = document.getElementById('chart-fail');
-  if (h2) lineChart(h2, { x: mf.wall_h, xDomain: [0, mfEnd], yDomain: [0, 100], xLabel: H_LABEL, xName: '', xFmt: hFmt,
-    series: [{ name: '% of episodes', values: mf.fail_pct, color: S1 }], bands: wmBand(at(mf, 500)),
-    markers: ck ? [{ x: mf.wall_h[k], y: mf.fail_pct[k], label: `${mf.fail_pct[k].toFixed(0)} %`, color: S1, anchor: 'end' }] : [],
-    yFmt: (v) => v.toFixed(0) + ' %', aria: `Share of training episodes ending in a failure falls to ${mf.fail_pct[k].toFixed(0)} % in ${mf.wall_h[k].toFixed(1)} hours of training` });
+  const h2 = document.getElementById('chart-mfb-eval');
+  if (h2) lineChart(h2, { x: mf.eval.wall_h, xDomain: [0, mfEnd], yDomain: [0, 1], xLabel: H_LABEL, xName: '', xFmt: hFmt,
+    series: [{ name: 'normalized return', values: mf.eval.norm_return, color: S1, dots: true }], yFmt: (v) => v.toFixed(2),
+    aria: `Held-out normalized return ${mf.eval.norm_return.at(-1).toFixed(2)} after ${mf.eval.wall_h.at(-1).toFixed(1)} hours of training` });
 
   // MS-Human-700: one run
   const ms = D.mshuman;

@@ -58,9 +58,9 @@
       with <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a>'s tracking task.</p>
     <p>Between the policy and the skeleton sit activation dynamics, wrapping tendons and Hill-type force curves. Every observation,
       reward and termination is one analytic function, evaluated by the simulator and on imagined states alike, with a torch replica
-      of MuJoCo's muscles in it. On MS-Human-700, one run on one GPU reaches a normalized return of 0.67 on MuscleMimic's 108
-      held-out clips after 2.1 hours (iteration 3500), 86 of them tracked to the end, and is still training; MyoFullBody is
-      training with the same code.</p>
+      of MuJoCo's muscles in it. On MS-Human-700, one run on one GPU reaches a normalized return of 0.83 on MuscleMimic's 108
+      held-out clips in 4 hours (iteration 6500), 99 of them tracked to the end, and 0.89 after 5.2 hours, 107 tracked; it is
+      still training, and MyoFullBody is training with the same code.</p>
   </div>
 </section>
 
@@ -171,16 +171,17 @@
   <div class="container medium">
     <h2>MyoFullBody</h2>
     <p>One run on MuscleMimic's KIT split, 972 training clips (1.5 h of motion), 4096 parallel environments, MuscleMimic's solver
-      settings (Euler, 100 / 50 iterations), on one RTX 5090. The run has just started; the curves below are a snapshot at
-      iteration 900.</p>
+      settings (Euler, 100 / 50 iterations), on one RTX 5090. The run is in its first hours; the curves below are a snapshot
+      at iteration 3200 (1.9 hours), and its first checkpoint, iteration 2000, scores 0.40 on the 108 held-out clips, 44 of
+      them tracked to the end.</p>
     <div class="two-col" style="margin-top: 1.2rem;">
       <div class="chart" id="chart-eplen">
         <div class="chart-title">Mean training episode length</div>
         <div class="chart-sub">steps of 10 ms, per 50 iterations</div>
       </div>
-      <div class="chart" id="chart-fail">
-        <div class="chart-title">Training episodes ending in a failure</div>
-        <div class="chart-sub">% of finished episodes, per 50 iterations</div>
+      <div class="chart" id="chart-mfb-eval">
+        <div class="chart-title">Normalized return on the 108 held-out clips</div>
+        <div class="chart-sub">per evaluated checkpoint, every clip once from its first frame</div>
       </div>
     </div>
     <!-- EDIT: everything below is model_012000 of an earlier run; replace it with the current run's checkpoint -->
@@ -222,13 +223,13 @@
   <div class="container medium">
     <h2>MS-Human-700</h2>
     <p>MS-Human-700 with locked hands (694 muscles) on the same 972 training clips, retargeted to it, with MyoFullBody's
-      settings, on one RTX 5090. The run is still training; this is a snapshot at iteration 7150, and the held-out evaluation,
-      on CPU, trails training.</p>
+      settings, on one RTX 5090. The run is still training; this is a snapshot at iteration 9800 (6.0 hours), and the held-out
+      evaluation trails training.</p>
     <div class="stats">
-      <div class="stat"><div class="stat-label">Training episode length, iterations 6700–7150</div><div class="stat-value">281<small>steps (2.8 s)</small></div></div>
-      <div class="stat"><div class="stat-label">Training episodes ending in a failure, the same iterations</div><div class="stat-value">1 %</div></div>
-      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips, iteration 3500</div><div class="stat-value">0.67<small>86 tracked</small></div></div>
-      <div class="stat"><div class="stat-label">Training time to iteration 7150</div><div class="stat-value">4.4<small>hours</small></div></div>
+      <div class="stat"><div class="stat-label">Training episode length, iterations 9050–9800</div><div class="stat-value">275<small>steps (2.8 s)</small></div></div>
+      <div class="stat"><div class="stat-label">Training episodes ending in a failure, the same iterations</div><div class="stat-value">0.4 %</div></div>
+      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips, iteration 8500 (5.2 hours)</div><div class="stat-value">0.89<small>107 tracked</small></div></div>
+      <div class="stat"><div class="stat-label">The same after 4 hours (iteration 6500)</div><div class="stat-value">0.83<small>99 tracked</small></div></div>
     </div>
     <div class="two-col">
       <div class="chart" id="chart-ms-eplen">
