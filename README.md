@@ -28,9 +28,8 @@ the excitation of every muscle at 100 Hz to follow motion-capture clips.
 
 ## Status
 
-Both bodies train on MuscleMimic's KIT split (972 training clips) with the defaults: MuscleMimic's solver settings
-(Euler, 100 / 50 iterations), 4096 environments on one RTX 5090, and the state-gradient clip at 100. Evaluation plays
-each of MuscleMimic's 108 held-out clips once from its first frame, without exploration noise.
+Both bodies train on MuscleMimic's KIT split (972 training clips) with the defaults: 4096 environments on one RTX
+5090. Evaluation plays each of MuscleMimic's 108 held-out clips once from its first frame, without exploration noise.
 
 - **MS-Human-700** (locked hands, the clips retargeted to it): a normalized return of 0.83 after 4 hours
   (iteration 6500, 99 of 108 clips tracked to the end), 0.89-0.91 from 5.9 hours on, and 0.90 after 7.1 hours
