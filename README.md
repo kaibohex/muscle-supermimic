@@ -34,10 +34,11 @@ Both bodies train on MuscleMimic's KIT split (972 training clips) with the defau
 each of MuscleMimic's 108 held-out clips once from its first frame, without exploration noise.
 
 - **MS-Human-700** (locked hands, the clips retargeted to it): a normalized return of 0.83 after 4 hours
-  (iteration 6500, 99 of 108 clips tracked to the end) and 0.89 after 5.2 hours (iteration 8500, 107 tracked).
-  Still training.
-- **MyoFullBody**: a run on the current code is in its first hours (0.40 at iteration 2000). An earlier run
-  without the state-gradient clip reached 0.77 at iteration 12000 (10.7 hours, 101 tracked).
+  (iteration 6500, 99 of 108 clips tracked to the end), 0.89-0.91 from 5.9 hours on, and 0.90 after 7.1 hours
+  (iteration 11500, 107 tracked); iteration 10000 tracks all 108. Still training.
+- **MyoFullBody**: a run on the current code scores 0.57 after 2.4 hours (iteration 4000, 81 tracked) and is
+  still training. An earlier run without the state-gradient clip reached 0.77 at iteration 12000 (10.7 hours,
+  101 tracked).
 
 **The state-gradient clip.** On these bodies the policy gradient through imagination can grow without bound
 along the loop muscle-velocity observation → policy → activation → world model → muscle velocity. The flag
