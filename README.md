@@ -34,9 +34,7 @@ Both bodies train on MuscleMimic's KIT split (972 training clips) with the defau
 - **MS-Human-700** (locked hands, the clips retargeted to it): a normalized return of 0.83 after 4 hours
   (iteration 6500, 99 of 108 clips tracked to the end), 0.89-0.91 from 5.9 hours on, and 0.90 after 7.1 hours
   (iteration 11500, 107 tracked); iteration 10000 tracks all 108. Still training.
-- **MyoFullBody**: a run on the current code scores 0.57 after 2.4 hours (iteration 4000, 81 tracked) and is
-  still training. An earlier run without the state-gradient clip reached 0.77 at iteration 12000 (10.7 hours,
-  101 tracked).
+- **MyoFullBody**: a run on the current code scores 0.57 after 2.4 hours (iteration 4000, 81 tracked).
 
 ## Install
 
