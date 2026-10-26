@@ -41,7 +41,7 @@
     <figure>
       <video class="video" src="static/videos/teaser.mp4" poster="static/videos/teaser_poster.jpg" muted loop playsinline preload="metadata" data-autoplay
         aria-label="Three motion-capture clips, turning left, walking forward and walking backward, each tracked side by side by MyoFullBody (left, white bones) and MS-Human-700 (right, tan bones), their muscles drawn in red"></video>
-      <!-- EDIT: MyoFullBody's half is model_012000 of an earlier run (no state-gradient clip); re-render with the current run -->
+      <!-- EDIT: MyoFullBody's half is model_012000 of an earlier run; re-render with the current run -->
       <figcaption><strong>MyoFullBody and MS-Human-700 tracking three training clips.</strong>Turning left, walking forward and
         walking backward, from MuscleMimic's KIT set; in each pair MyoFullBody (354 muscles) on the left and MS-Human-700 (694
         muscles) on the right, each driven by its own policy. MS-Human-700's muscles are colored by their activation, from
@@ -184,8 +184,8 @@
     </div>
     <!-- EDIT: everything below is model_012000 of an earlier run; replace it with the current run's checkpoint -->
     <h3>An earlier run's checkpoint</h3>
-    <p>Until this run has trained, the numbers and clips below come from an earlier run with the same settings but without the
-      state-gradient clip: its checkpoint of iteration 12000, after 10.7 hours on one RTX 5090. Evaluation runs every clip once
+    <p>Until this run has trained, the numbers and clips below come from an earlier run: its checkpoint of
+      iteration 12000, after 10.7 hours on one RTX 5090. Evaluation runs every clip once
       from its first frame without exploration noise.</p>
     <div class="stats">
       <div class="stat"><div class="stat-label">Training episode length, iteration 12000</div><div class="stat-value">268<small>steps (2.7 s)</small></div></div>
