@@ -29,8 +29,8 @@ the excitation of every muscle at 100 Hz to follow motion-capture clips.
 
 ## Status
 
-Both bodies train on MuscleMimic's KIT split (972 training clips) with MuscleMimic's solver settings (Euler,
-100 / 50 iterations), 4096 environments on one RTX 5090, and `--agent.state-grad-clip 100`. Evaluation plays
+Both bodies train on MuscleMimic's KIT split (972 training clips) with the defaults: MuscleMimic's solver settings
+(Euler, 100 / 50 iterations), 4096 environments on one RTX 5090, and the state-gradient clip at 100. Evaluation plays
 each of MuscleMimic's 108 held-out clips once from its first frame, without exploration noise.
 
 - **MS-Human-700** (locked hands, the clips retargeted to it): a normalized return of 0.83 after 4 hours
@@ -41,9 +41,9 @@ each of MuscleMimic's 108 held-out clips once from its first frame, without expl
 
 **The state-gradient clip.** On these bodies the policy gradient through imagination can grow without bound
 along the loop muscle-velocity observation → policy → activation → world model → muscle velocity. The flag
-clips, at every imagined step, each trajectory's gradient on the state it carries forward. It is off by default
-(as in SuperMimic); without it, our MS-Human-700 run did not take off in 6000 iterations. See
-[docs/training.md](docs/training.md).
+clips, at every imagined step, each trajectory's gradient on the state it carries forward. It is on by default
+(`--agent.state-grad-clip 100`; SuperMimic has no such clip, and 0 turns it off); without it, our MS-Human-700 run
+did not take off in 6000 iterations. See [docs/training.md](docs/training.md).
 
 ## Install
 
@@ -64,10 +64,8 @@ uvx --from huggingface_hub hf auth login
 uvx --from huggingface_hub hf download amathislab/musclemimic-retargeted --repo-type dataset \
     --include "MyoFullBody/gmr/KIT/*" --local-dir data/musclemimic
 
-# train on MuscleMimic's training list, with MuscleMimic's solver settings and the state-gradient clip
-uv run train Mjlab-SuperMimic-Flat-MyoFullBody --env.commands.motion.motion-file data/musclemimic/kit_kinesis_train.txt \
-    --env.sim.mujoco.integrator euler --env.sim.mujoco.iterations 100 --env.sim.mujoco.ls-iterations 50 \
-    --agent.state-grad-clip 100
+# train on MuscleMimic's training list (defaults: MuscleMimic's solver settings, the state-gradient clip)
+uv run train Mjlab-SuperMimic-Flat-MyoFullBody --env.commands.motion.motion-file data/musclemimic/kit_kinesis_train.txt
 
 # evaluate a checkpoint on the held-out list (a GPU takes ~30 s for the 108 clips), record the rollouts and render them
 uv run ms-eval --task Mjlab-SuperMimic-Flat-MyoFullBody --checkpoint logs/rsl_rl/myofullbody_tracking/<run>/model_<iteration>.pt \
@@ -79,9 +77,7 @@ MS-Human-700 on the same clips, retargeted from MyoFullBody (CPU, ~20 min):
 
 ```bash
 uv run ms-retarget-myofullbody data/mshuman700_kit data/musclemimic/kit_kinesis_train.txt data/musclemimic/kit_kinesis_test.txt --workers 6
-uv run train Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands --env.commands.motion.motion-file data/mshuman700_kit/kit_kinesis_train.txt \
-    --env.sim.mujoco.integrator euler --env.sim.mujoco.iterations 100 --env.sim.mujoco.ls-iterations 50 \
-    --agent.state-grad-clip 100
+uv run train Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands --env.commands.motion.motion-file data/mshuman700_kit/kit_kinesis_train.txt
 
 # the retargeted reference itself, replayed kinematically (no controller)
 uv run ms-render data/mshuman700_kit/359/turn_left05_poses.npz videos/ --lock-hands

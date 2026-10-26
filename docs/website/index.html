@@ -108,10 +108,7 @@
       excitations, the activations follow MuJoCo's own activation dynamics, and the world model moves the body. Rewards,
       terminations and observations on imagined states come from the same functions that label the simulator's transitions,
       including muscle length, velocity and force from a torch replica of MuJoCo's spatial tendons (equal to MuJoCo's to
-      10⁻⁹ / 10⁻⁸ / 10⁻⁶). The gradient of the return, with a critic's value at the last step, flows back through all of it.
-      At every imagined step, each trajectory's gradient on the state it carries forward is clipped to a norm of 100
-      (<code>--agent.state-grad-clip 100</code>): through the policy's muscle-velocity observation the loop can amplify it
-      step after step, and the clip bounds that growth without cutting the loop.</p>
+      10⁻⁹ / 10⁻⁸ / 10⁻⁶). The gradient of the return, with a critic's value at the last step, flows back through all of it.</p>
     <figure class="diagram" style="margin-top: 1.2rem;">
       <div class="table-wrap">
         <svg viewBox="0 0 860 300" style="min-width: 620px;" role="img" aria-label="Collection: the policy drives the simulator, transitions go to a replay buffer, the world model is fit on them. Improvement: a loop of state, observation, policy, activation dynamics and world model over 32 imagined steps, with analytic rewards and a critic at the end; the gradient flows back through the loop.">
@@ -270,9 +267,7 @@ uvx --from huggingface_hub hf download amathislab/musclemimic-retargeted --repo-
     --include "MyoFullBody/gmr/KIT/*" --local-dir data/musclemimic
 
 uv run train Mjlab-SuperMimic-Flat-MyoFullBody \
-    --env.commands.motion.motion-file data/musclemimic/kit_kinesis_train.txt \
-    --env.sim.mujoco.integrator euler --env.sim.mujoco.iterations 100 --env.sim.mujoco.ls-iterations 50 \
-    --agent.state-grad-clip 100</code></pre>
+    --env.commands.motion.motion-file data/musclemimic/kit_kinesis_train.txt</code></pre>
     <p style="margin-top: 0.9rem;">MS-Human-700, evaluation, rendering and memory settings: see the
       <a href="https://github.com/kaibohex/muscle-supermimic">README</a> and
       <a href="https://github.com/kaibohex/muscle-supermimic/tree/master/docs">docs</a>.</p>
