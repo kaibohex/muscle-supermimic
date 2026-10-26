@@ -3,7 +3,6 @@
 **Whole-body motion tracking for musculoskeletal humanoids with one differentiable world model:**
 [SuperMimic](https://arxiv.org/abs/2610.28480) driving MS-Human-700 (700 muscles) and MyoFullBody (354
 muscles), on [mjlab](https://github.com/mujocolab/mjlab) / MuJoCo-Warp.
-[Project page](https://kaibohex.github.io/muscle-supermimic/) (source in [docs/website/](docs/website/)).
 
 > This project is under active development: its results keep improving, and the code, the technical report and
 > the checkpoints are updated along with them.
