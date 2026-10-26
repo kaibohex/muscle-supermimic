@@ -44,7 +44,8 @@
       <!-- EDIT: MyoFullBody's half is model_012000 of an earlier run (no state-gradient clip); re-render with the current run -->
       <figcaption><strong>MyoFullBody and MS-Human-700 tracking three training clips.</strong>Turning left, walking forward and
         walking backward, from MuscleMimic's KIT set; in each pair MyoFullBody (354 muscles) on the left and MS-Human-700 (694
-        muscles) on the right, each driven by its own policy.</figcaption>
+        muscles) on the right, each driven by its own policy. MS-Human-700's muscles are colored by their activation, from
+        light grey (0) to deep red (1).</figcaption>
     </figure>
   </div>
 </section>
@@ -241,9 +242,10 @@
         <div class="chart-sub">per evaluated checkpoint, every clip once from its first frame</div>
       </div>
     </div>
-    <h3>Clips at iteration 5000</h3>
-    <p>The checkpoint of iteration 5000 on the teaser's turning clip from the training set and on three held-out clips, a run, a
-      right turn and a counter-clockwise circle: all four are tracked to the end, at a normalized return of 0.74.</p>
+    <h3>Clips at iteration 10000</h3>
+    <p>The checkpoint of iteration 10000 on the teaser's turning clip from the training set and on three held-out clips, a run,
+      a right turn and a counter-clockwise circle: all four are tracked to the end, at a normalized return of 0.89. Each
+      muscle is colored by its activation, from light grey (0) to deep red (1).</p>
     <div class="four-col" style="margin-top: 1rem;">
       <figure><video class="video square" src="static/videos/ms_train_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="MS-Human-700 turning left"></video>
         <div class="clip-label">Turn left (training) · <code>359/turn_left05</code></div></figure>

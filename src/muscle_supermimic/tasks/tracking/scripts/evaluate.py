@@ -57,7 +57,7 @@ def evaluate(env, runner, record: str | None = None, action_noise: float = 0.0, 
     done_eval = torch.zeros(C, dtype=torch.bool, device=u.device)
     failed = torch.zeros_like(done_eval)
     q_adr = torch.cat((cmd._free_q, cmd.robot.indexing.joint_q_adr.long()))
-    traj = {"qpos": [], "f": [], "alive": []}
+    traj = {"qpos": [], "f": [], "alive": [], "act": []}
     while not bool(done_eval.all()):
         alive = ~done_eval
         if record:
@@ -65,6 +65,7 @@ def evaluate(env, runner, record: str | None = None, action_noise: float = 0.0, 
             qpos[:, :3] -= u.scene.env_origins
             # clone: cmd.f is updated in place and .cpu() aliases it on a CPU device
             traj["qpos"].append(qpos.cpu()), traj["f"].append(cmd.f.clone().cpu()), traj["alive"].append(alive.cpu())
+            traj["act"].append(u.sim.data.act[:, cmd._act_adr].cpu())  # muscle activations, in the robot's actuator order
         a = policy(obs)
         if action_noise > 0:  # as the runner collects: noise on the excitations, clipped
             a = (a + action_noise * torch.randn(a.shape, generator=gen, device=a.device)).clamp(0.0, 1.0)
