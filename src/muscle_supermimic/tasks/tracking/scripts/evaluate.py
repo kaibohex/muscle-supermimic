@@ -5,8 +5,9 @@ adds training's exploration noise instead (N(0, sigma^2) on the excitations, cli
 fails if its rollout triggers a training termination. Normalized return is the undiscounted reward sum
 divided by its maximum attainable value.
 
-  uv run ms-eval --checkpoint logs/rsl_rl/mshuman700_tracking/<run>/model_014000.pt --motion-file data/motions
-  uv run ms-eval --run-dir logs/rsl_rl/mshuman700_tracking/<run> --motion-file data/motions --watch
+  uv run ms-eval --checkpoint logs/rsl_rl/mshuman700_tracking/<run>/model_014000.pt \
+      --motion-file data/mshuman700_kit/kit_kinesis_test.txt
+  uv run ms-eval --run-dir logs/rsl_rl/mshuman700_tracking/<run> --motion-file data/mshuman700_kit/kit_kinesis_test.txt --watch
 """
 
 from __future__ import annotations

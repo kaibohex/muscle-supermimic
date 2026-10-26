@@ -101,7 +101,7 @@ The tasks register through mjlab's `mjlab.tasks` entry point with the SuperMimic
 | Path | What |
 |---|---|
 | `src/muscle_supermimic/assets/robots/` | the two robots as mjlab `EntityCfg`s, and `ModelInfo` (root, independent and coupled joints, muscles) |
-| `src/muscle_supermimic/tasks/tracking/` | the task: env cfg, `mdp/` (FK, muscle geometry and activation, motion library, analytic terms), per-robot configs, `scripts/` (`ms-convert-motion`, `ms-retarget-myofullbody`, `ms-eval`, `ms-render`) |
+| `src/muscle_supermimic/tasks/tracking/` | the task: env cfg, `mdp/` (FK, muscle geometry and activation, motion library, analytic terms), per-robot configs, `scripts/` (`ms-retarget-myofullbody`, `ms-eval`, `ms-render`) |
 | `src/muscle_supermimic/rl/supermimic/` | the SuperMimic runner, world model / policy / critic, replay buffer, config |
 | `third_party/MS-Human-700/` | the upstream MS-Human-700 model (git submodule) |
 | `tests/` | FK, muscles and activation vs MuJoCo, retargeting, simulator vs analytic terms, a tiny end-to-end training run |
@@ -127,7 +127,7 @@ Apache License 2.0 ([LICENSE](LICENSE)); [NOTICE](NOTICE) carries the notices of
   `musclemimic/environments/humanoids/myofullbody.py`): the finger joints and muscles it removes, the mimic
   sites it tracks. Its license is in `third_party/musclemimic/LICENSE`; the KIT train/test lists in
   `data/musclemimic/` are MuscleMimic's (`loco_mujoco/smpl/const.py`).
-- MS-Human-700 (Apache-2.0, LNSGroup), msgym's walking clip (Apache-2.0), mjlab (Apache-2.0).
+- MS-Human-700 (Apache-2.0, LNSGroup), mjlab (Apache-2.0).
 - The MyoFullBody model comes from the `musclemimic-models` package (Apache-2.0), installed, not vendored. Its
   NOTICE lists what it derives from: MyoSuite / myo_sim (Apache-2.0) and OpenSim models, among them MoBL-ARMS
   (arm and hand), released for **non-commercial use only**.

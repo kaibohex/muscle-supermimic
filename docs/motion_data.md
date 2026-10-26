@@ -7,7 +7,7 @@ come from finite differences, as in supermimic_vibed.
 
 ## Formats
 
-* **canonical** (what `ms-convert-motion` and `ms-retarget-myofullbody` write): `fps`, `root_pos` (T,3)
+* **canonical** (what `ms-retarget-myofullbody` writes): `fps`, `root_pos` (T,3)
   pelvis origin in the world [m], `root_quat` (T,4) wxyz of the *canonical root frame* (x forward, y left,
   z up; identity = standing upright facing +x; it is the pelvis body frame times `ROOT_OFFSET`),
   `joint_pos` (T,J) [rad] and `joint_names` (J,). Columns are matched by name, so joints the model lacks
@@ -30,16 +30,6 @@ come from finite differences, as in supermimic_vibed.
 * **MuscleMimic trajectory**: `qpos` (T,nq) in the layout of `joint_names` (+ `jnt_type`), the root free
   joint first, and `frequency` -- MuscleMimic's retargeted MyoFullBody caches as they are. Coupled
   joints are ignored here too.
-
-## Test clip
-
-msgym's one walking cycle, tiled into 8 cycles / 9.4 s (MS-Human-700):
-
-```bash
-mkdir -p data/msgym
-curl -L -o data/msgym/walking_gait.npz https://github.com/LNSGroup/msgym/raw/main/msgym/motion_data/walking_gait.npz
-uv run ms-convert-motion data/msgym/walking_gait.npz data/motions/walk.npz --cycles 8
-```
 
 ## MyoFullBody: MuscleMimic's retargeted AMASS (KIT)
 
@@ -73,7 +63,8 @@ uv run ms-retarget-myofullbody data/mshuman700_kit data/musclemimic/kit_kinesis_
 ```
 
 It writes canonical clips under `data/mshuman700_kit/` (paths relative to the KIT folder) and the two lists
-next to them. Both models come from the same OpenSim models: the legs (hip, knee, ankle, subtalar, mtp) and
+next to them; `314/walking_medium08_poses.npz`, the MyoFullBody test clip retargeted, is the MS-Human-700 test
+clip of `tests/test_env.py`. Both models come from the same OpenSim models: the legs (hip, knee, ankle, subtalar, mtp) and
 the shoulder, elbow and forearm have the same joints about the same axes, so those 27 angles carry over
 (their segments turn exactly alike; positions differ by the knee's translation curves, < 2 cm, and the
 shoulders' place on the thorax, ~4 cm), and so does the root pose (the pelvis frames coincide). The rest is

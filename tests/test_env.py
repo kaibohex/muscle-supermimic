@@ -4,8 +4,9 @@ Checks that the simulator side (mjlab managers) and the imagination side (analyt
 reset states, muscle activations, rewards, the policy observation history and the goal. Then runs a
 few tiny training iterations end to end and round-trips a checkpoint.
 
-Needs a clip per robot (see README): ``data/motions/walk.npz`` for MS-Human-700 and
-``data/myofullbody/walk.npz`` for MyoFullBody; a task without its clip is skipped.
+Needs a clip per robot (see docs/motion_data.md): ``data/myofullbody/walk.npz`` for MyoFullBody and
+the same clip retargeted by ``ms-retarget-myofullbody``, ``data/mshuman700_kit/314/walking_medium08_poses.npz``,
+for MS-Human-700; a task without its clip is skipped.
 """
 
 import os
@@ -15,9 +16,10 @@ import pytest
 import torch
 
 DATA = os.path.join(os.path.dirname(__file__), "..", "data")
+MSHUMAN700_CLIP = os.path.join(DATA, "mshuman700_kit", "314", "walking_medium08_poses.npz")
 MOTIONS = {
-    "Mjlab-SuperMimic-Flat-MS-Human-700": os.path.join(DATA, "motions", "walk.npz"),
-    "Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands": os.path.join(DATA, "motions", "walk.npz"),
+    "Mjlab-SuperMimic-Flat-MS-Human-700": MSHUMAN700_CLIP,
+    "Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands": MSHUMAN700_CLIP,
     "Mjlab-SuperMimic-Flat-MyoFullBody": os.path.join(DATA, "myofullbody", "walk.npz"),
 }
 

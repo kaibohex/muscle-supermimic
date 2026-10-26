@@ -11,7 +11,7 @@ Studio look, 50 fps: a white floor fading into a light sky, a near-vertical key 
 and a camera that follows the root from a fixed direction, facing the body (25 deg off its front) at the start.
 
   uv run ms-render traj.npz out_dir/ [--clips walk] [--seconds 10] [--ghost]
-  uv run ms-render data/motions/walk.npz out_dir/ [--lock-hands]
+  uv run ms-render data/mshuman700_kit/314/walking_medium08_poses.npz out_dir/ [--lock-hands]
 """
 
 from __future__ import annotations
