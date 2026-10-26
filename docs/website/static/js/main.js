@@ -1,4 +1,4 @@
-// muscle-supermimic project page: lazy video playback, BibTeX copy, and the charts
+// muscle-supermimic project page: lazy video playback, BibTeX copy, the MS-Human-700 clip gallery, and the charts
 // (SVG drawn from window.CHART_DATA, re-drawn on resize; crosshair tooltips; the time axis shows training
 // iterations while hovered, or tapped on a touch screen).
 
@@ -244,6 +244,38 @@ function charts() {
     aria: `Held-out normalized return rises to ${ms.eval.norm_return.at(-1).toFixed(2)} after ${ms.eval.wall_h.at(-1).toFixed(1)} hours of training` });
 }
 
+// ── MS-Human-700 clip gallery: pick a kind of motion, then one of its clips ─────
+function gallery() {
+  const G = window.MS_GALLERY, root = document.getElementById('ms-gallery');
+  if (!G || !root) return;
+  const video = root.querySelector('video'), kinds = root.querySelector('.gallery-kinds');
+  const list = root.querySelector('.gallery-clips'), info = root.querySelector('.gallery-info');
+  const press = (box, key, v) => box.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset[key] === v)));
+  const chip = (box, label, onClick) => {
+    const b = html('button', 'chip', box, label);
+    b.type = 'button';
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  const pick = (c, play) => {
+    video.src = c.src;
+    video.setAttribute('aria-label', `MS-Human-700 tracking ${c.id} (${c.kind})`);
+    if (play) video.play().catch(() => {});  // on load, the visibility observer starts it
+    press(list, 'id', c.id);
+    info.textContent = `${c.id} · ${c.seconds} s · normalized return ${c.ret.toFixed(2)} · `
+      + (c.fell_at === undefined ? 'tracked to the end' : `falls at ${c.fell_at} s`);
+  };
+  const showKind = (k, c, play) => {
+    press(kinds, 'kind', k);
+    list.replaceChildren();
+    for (const x of G.clips.filter((x) => x.kind === k)) chip(list, x.id, () => pick(x, true)).dataset.id = x.id;
+    pick(c || G.clips.find((x) => x.kind === k), play);
+  };
+  for (const k of new Set(G.clips.map((x) => x.kind))) chip(kinds, k, () => showKind(k, null, true)).dataset.kind = k;
+  const start = G.clips.find((x) => x.id === G.start) || G.clips[0];
+  showKind(start.kind, start, false);
+}
+
 // ── Videos play while visible ─────────────────────────────────
 function lazyVideos() {
   const vids = document.querySelectorAll('video[data-autoplay]');
@@ -264,4 +296,4 @@ function copyButtons() {
   }));
 }
 
-document.addEventListener('DOMContentLoaded', () => { charts(); lazyVideos(); copyButtons(); });
+document.addEventListener('DOMContentLoaded', () => { charts(); gallery(); lazyVideos(); copyButtons(); });

@@ -239,19 +239,18 @@
         <div class="chart-sub">per evaluated checkpoint, every clip once from its first frame</div>
       </div>
     </div>
-    <h3>Clips at iteration 10000</h3>
-    <p>The checkpoint of iteration 10000 on the teaser's turning clip from the training set and on three held-out clips, a run,
-      a right turn and a counter-clockwise circle: all four are tracked to the end, at a normalized return of 0.89. Each
-      muscle is colored by its activation, from light grey (0) to deep red (1).</p>
-    <div class="four-col" style="margin-top: 1rem;">
-      <figure><video class="video square" src="static/videos/ms_train_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="MS-Human-700 turning left"></video>
-        <div class="clip-label">Turn left (training) · <code>359/turn_left05</code></div></figure>
-      <figure><video class="video square" src="static/videos/ms_test_walking_run06.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="MS-Human-700 running"></video>
-        <div class="clip-label">Run · <code>348/walking_run06</code></div></figure>
-      <figure><video class="video square" src="static/videos/ms_test_turn_right09.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="MS-Human-700 turning right"></video>
-        <div class="clip-label">Turn right · <code>317/turn_right09</code></div></figure>
-      <figure><video class="video square" src="static/videos/ms_test_ccw_circle04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="MS-Human-700 walking a counter-clockwise circle"></video>
-        <div class="clip-label">Counter-clockwise circle · <code>4/WalkInCounterClockwiseCircle04</code></div></figure>
+    <h3>Training clips at iteration 10000</h3>
+    <p>Pick any of 100 training clips, ten of each kind of motion: the checkpoint of iteration 10000 tracks 99 of them to the
+      end, at a normalized return of 0.90. Each muscle is colored by its activation, from light grey (0) to deep red (1).</p>
+    <div class="gallery" id="ms-gallery">
+      <video class="video square" muted loop playsinline preload="none" data-autoplay aria-label="MS-Human-700 tracking a training clip"></video>
+      <div>
+        <div class="gallery-label">Motion</div>
+        <div class="gallery-chips gallery-kinds" role="group" aria-label="Kind of motion"></div>
+        <div class="gallery-label">Clip</div>
+        <div class="gallery-chips gallery-clips" role="group" aria-label="Clip"></div>
+        <p class="gallery-info" aria-live="polite"></p>
+      </div>
     </div>
   </div>
 </section>
@@ -318,6 +317,7 @@ uv run train Mjlab-SuperMimic-Flat-MyoFullBody \
 </footer>
 
 <script src="static/data/charts.js"></script>
+<script src="static/data/ms_gallery.js"></script>
 <script src="static/js/main.js"></script>
 </body>
 </html>
