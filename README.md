@@ -55,7 +55,7 @@ uvx --from huggingface_hub hf auth login
 uvx --from huggingface_hub hf download amathislab/musclemimic-retargeted --repo-type dataset \
     --include "MyoFullBody/gmr/KIT/*" --local-dir data/musclemimic
 
-# train on MuscleMimic's training list (defaults: MuscleMimic's solver settings, the state-gradient clip)
+# train on MuscleMimic's training list
 uv run train Mjlab-SuperMimic-Flat-MyoFullBody --env.commands.motion.motion-file data/musclemimic/kit_kinesis_train.txt
 
 # evaluate a checkpoint on the held-out list (a GPU takes ~30 s for the 108 clips), record the rollouts and render them
