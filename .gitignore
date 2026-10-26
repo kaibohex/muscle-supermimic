@@ -14,4 +14,4 @@ logs/
 *.pt
 *.npz
 *.mp4
-!docs/website/static/videos/*.mp4
+!docs/website/static/videos/**/*.mp4
