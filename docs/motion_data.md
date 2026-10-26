@@ -24,9 +24,6 @@ come from finite differences, as in supermimic_vibed.
 
   The other 42 joints (knee translations, patella, shoulder girdle, wrist) follow from these through
   the model's `<equality>` polynomials and are not part of the data.
-* **MS-Human-700 native**: `qpos_traj` (T,85) in the upstream model's qpos layout (6 OpenSim pelvis
-  DoF first) and `framerate`, e.g. the output of an IK/retargeting pipeline run on the upstream XML,
-  or msgym's clips. The root pose is recovered with MuJoCo FK on the upstream model.
 * **MuscleMimic trajectory**: `qpos` (T,nq) in the layout of `joint_names` (+ `jnt_type`), the root free
   joint first, and `frequency` -- MuscleMimic's retargeted MyoFullBody caches as they are. Coupled
   joints are ignored here too.

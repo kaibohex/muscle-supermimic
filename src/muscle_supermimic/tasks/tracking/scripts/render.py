@@ -4,7 +4,7 @@
   apart by the size of its qpos): the simulated human with its muscles drawn, each colored by its activation when the
   recording holds them (light grey at rest to deep red; ``--no-activation`` keeps the model's own color), optionally
   with the reference motion overlaid as a translucent ghost (``--ghost``);
-* an MS-Human-700 motion clip (canonical or native .npz): kinematic replay of the reference alone, as the motion
+* an MS-Human-700 motion clip (canonical .npz): kinematic replay of the reference alone, as the motion
   library resamples it to 50 Hz, with a foot-ground clearance report (penetration / floating).
 
 Studio look, 50 fps: a white floor fading into a light sky, a near-vertical key light casting the contact shadow,

@@ -190,9 +190,3 @@ def get_mshuman700_cfg(self_collisions: bool = False, lock_hands: bool = False) 
 def compiled_model(lock_hands: bool = False) -> mujoco.MjModel:
     """The entity compiled on its own (no scene, no name prefix) for CPU-side kinematics and parameters."""
     return get_spec(lock_hands=lock_hands).compile()
-
-
-@functools.lru_cache(maxsize=1)
-def original_model() -> mujoco.MjModel:
-    """The upstream model as shipped (6 pelvis DoF), to convert clips stored in its 85-D qpos layout."""
-    return mujoco.MjModel.from_xml_path(str(require_mshuman700_xml()))

@@ -6,9 +6,6 @@ Port of supermimic_vibed's ``MotionLib`` (github.com/zita-ch/supermimic_vibed, M
 * **canonical** -- ``fps``, ``root_pos`` (T,3), ``root_quat`` (T,4, wxyz, canonical root frame: x
   forward, y left, z up), ``joint_pos`` (T,J) and ``joint_names`` (J,); without names the 37 columns
   are taken in MS-Human-700's full model order. Joints the model lacks (e.g. locked wrists) are dropped;
-* **MS-Human-700 native** -- ``qpos_traj`` (T,85) in the upstream model's qpos layout (6 OpenSim
-  pelvis DoF first) and ``framerate``, as msgym's ``motion_data/*.npz``. The root pose is recovered
-  with MuJoCo FK on the upstream model;
 * **MuscleMimic trajectory** -- ``qpos`` (T,nq) in the layout given by ``joint_names`` (+ ``jnt_type``),
   the root free joint first, and ``frequency``, as MuscleMimic's retargeted MyoFullBody caches
   (``MyoFullBody/gmr/KIT/<subject>/<clip>.npz``).
@@ -56,8 +53,6 @@ def motion_files(path: str) -> list[str]:
 def load_clip(path: str, info: ModelInfo, R_off: np.ndarray) -> tuple[float, np.ndarray, np.ndarray, np.ndarray]:
     """-> (fps, root_pos (T,3), root_quat (T,4) canonical wxyz, joint_pos (T,J) in ``info.indep_names`` order)."""
     data = np.load(path, allow_pickle=False)
-    if "qpos_traj" in data.files:
-        return (float(data["framerate"]),) + native_to_canonical(data["qpos_traj"], info, R_off)
     if "qpos" in data.files:
         return (float(data["frequency"]),) + trajectory_to_canonical(data, info, R_off)
     q = np.asarray(data["joint_pos"], dtype=np.float64)
@@ -70,21 +65,6 @@ def load_clip(path: str, info: ModelInfo, R_off: np.ndarray) -> tuple[float, np.
     assert not missing, f"{path}: no data for joints {missing}"
     q = q[:, [names.index(n) for n in info.indep_names]]
     return float(data["fps"]), np.asarray(data["root_pos"], np.float64), np.asarray(data["root_quat"], np.float64), q
-
-
-def native_to_canonical(qpos: np.ndarray, info: ModelInfo, R_off: np.ndarray):
-    """Upstream MS-Human-700 85-D qpos frames -> canonical root pose + independent joint angles."""
-    m = mshuman700.original_model()
-    d = mujoco.MjData(m)
-    pelvis = m.body(mshuman700.ROOT_BODY).id
-    adr = [m.jnt_qposadr[m.joint(n).id] for n in info.indep_names]
-    p, quat = np.zeros((len(qpos), 3)), np.zeros((len(qpos), 4))
-    for t, x in enumerate(qpos):
-        d.qpos[:] = x
-        mujoco.mj_kinematics(m, d)
-        p[t] = d.xpos[pelvis]
-        mujoco.mju_mat2Quat(quat[t], (d.xmat[pelvis].reshape(3, 3) @ R_off).reshape(-1))
-    return p, quat, qpos[:, adr].astype(np.float64)
 
 
 def trajectory_to_canonical(data, info: ModelInfo, R_off: np.ndarray):
