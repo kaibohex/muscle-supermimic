@@ -1,7 +1,6 @@
 from muscle_supermimic.assets.robots.mshuman700.mshuman700_cfg import (
     compiled_model,
     get_mshuman700_cfg,
-    original_model,
 )
 from muscle_supermimic.assets.robots.mshuman700.mshuman700_constants import (
     INIT_POS,
@@ -19,5 +18,4 @@ __all__ = [
     "ROOT_BODY",
     "compiled_model",
     "get_mshuman700_cfg",
-    "original_model",
 ]

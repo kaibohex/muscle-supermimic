@@ -3,7 +3,6 @@
 **Whole-body motion tracking for musculoskeletal humanoids with one differentiable world model:**
 [SuperMimic](https://arxiv.org/abs/2610.28480) driving MS-Human-700 (700 muscles) and MyoFullBody (354
 muscles), on [mjlab](https://github.com/mujocolab/mjlab) / MuJoCo-Warp.
-[Project page](https://kaibohex.github.io/muscle-supermimic/) (source in [docs/website/](docs/website/)).
 
 > This project is under active development: its results keep improving, and the code, the technical report and
 > the checkpoints are updated along with them.
@@ -29,22 +28,13 @@ the excitation of every muscle at 100 Hz to follow motion-capture clips.
 
 ## Status
 
-Both bodies train on MuscleMimic's KIT split (972 training clips) with the defaults: MuscleMimic's solver settings
-(Euler, 100 / 50 iterations), 4096 environments on one RTX 5090, and the state-gradient clip at 100. Evaluation plays
-each of MuscleMimic's 108 held-out clips once from its first frame, without exploration noise.
+Both bodies train on MuscleMimic's KIT split (972 training clips) with the defaults: 4096 environments on one RTX
+5090. Evaluation plays each of MuscleMimic's 108 held-out clips once from its first frame, without exploration noise.
 
 - **MS-Human-700** (locked hands, the clips retargeted to it): a normalized return of 0.83 after 4 hours
   (iteration 6500, 99 of 108 clips tracked to the end), 0.89-0.91 from 5.9 hours on, and 0.90 after 7.1 hours
   (iteration 11500, 107 tracked); iteration 10000 tracks all 108. Still training.
-- **MyoFullBody**: a run on the current code scores 0.57 after 2.4 hours (iteration 4000, 81 tracked) and is
-  still training. An earlier run without the state-gradient clip reached 0.77 at iteration 12000 (10.7 hours,
-  101 tracked).
-
-**The state-gradient clip.** On these bodies the policy gradient through imagination can grow without bound
-along the loop muscle-velocity observation → policy → activation → world model → muscle velocity. The flag
-clips, at every imagined step, each trajectory's gradient on the state it carries forward. It is on by default
-(`--agent.state-grad-clip 100`; SuperMimic has no such clip, and 0 turns it off); without it, our MS-Human-700 run
-did not take off in 6000 iterations. See [docs/training.md](docs/training.md).
+- **MyoFullBody**: a run on the current code scores 0.57 after 2.4 hours (iteration 4000, 81 tracked).
 
 ## Install
 
@@ -65,7 +55,7 @@ uvx --from huggingface_hub hf auth login
 uvx --from huggingface_hub hf download amathislab/musclemimic-retargeted --repo-type dataset \
     --include "MyoFullBody/gmr/KIT/*" --local-dir data/musclemimic
 
-# train on MuscleMimic's training list (defaults: MuscleMimic's solver settings, the state-gradient clip)
+# train on MuscleMimic's training list
 uv run train Mjlab-SuperMimic-Flat-MyoFullBody --env.commands.motion.motion-file data/musclemimic/kit_kinesis_train.txt
 
 # evaluate a checkpoint on the held-out list (a GPU takes ~30 s for the 108 clips), record the rollouts and render them
@@ -111,14 +101,27 @@ The tasks register through mjlab's `mjlab.tasks` entry point with the SuperMimic
 | Path | What |
 |---|---|
 | `src/muscle_supermimic/assets/robots/` | the two robots as mjlab `EntityCfg`s, and `ModelInfo` (root, independent and coupled joints, muscles) |
-| `src/muscle_supermimic/tasks/tracking/` | the task: env cfg, `mdp/` (FK, muscle geometry and activation, motion library, analytic terms), per-robot configs, `scripts/` (`ms-convert-motion`, `ms-retarget-myofullbody`, `ms-eval`, `ms-render`) |
+| `src/muscle_supermimic/tasks/tracking/` | the task: env cfg, `mdp/` (FK, muscle geometry and activation, motion library, analytic terms), per-robot configs, `scripts/` (`ms-retarget-myofullbody`, `ms-eval`, `ms-render`) |
 | `src/muscle_supermimic/rl/supermimic/` | the SuperMimic runner, world model / policy / critic, replay buffer, config |
 | `third_party/MS-Human-700/` | the upstream MS-Human-700 model (git submodule) |
 | `tests/` | FK, muscles and activation vs MuJoCo, retargeting, simulator vs analytic terms, a tiny end-to-end training run |
 
 ## Citation
 
-This code builds on the following works; please cite them if you use it:
+If you use this code, please cite:
+
+```bibtex
+@misc{muscle_supermimic_2026,
+  title        = {muscle-supermimic: Whole-Body Motion Tracking for Musculoskeletal
+                  Humanoids with One Differentiable World Model},
+  author       = {{The muscle-supermimic Authors}},
+  year         = {2026},
+  note         = {Technical report},
+  howpublished = {\url{PROJECT_PAGE_URL}}
+}
+```
+
+It builds on the following works; please cite them as well:
 
 - SuperMimic: Q. Liao et al., *SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable
   World Model*, CoRL 2026, [arXiv:2610.28480](https://arxiv.org/abs/2610.28480).
@@ -137,7 +140,7 @@ Apache License 2.0 ([LICENSE](LICENSE)); [NOTICE](NOTICE) carries the notices of
   `musclemimic/environments/humanoids/myofullbody.py`): the finger joints and muscles it removes, the mimic
   sites it tracks. Its license is in `third_party/musclemimic/LICENSE`; the KIT train/test lists in
   `data/musclemimic/` are MuscleMimic's (`loco_mujoco/smpl/const.py`).
-- MS-Human-700 (Apache-2.0, LNSGroup), msgym's walking clip (Apache-2.0), mjlab (Apache-2.0).
+- MS-Human-700 (Apache-2.0, LNSGroup), mjlab (Apache-2.0).
 - The MyoFullBody model comes from the `musclemimic-models` package (Apache-2.0), installed, not vendored. Its
   NOTICE lists what it derives from: MyoSuite / myo_sim (Apache-2.0) and OpenSim models, among them MoBL-ARMS
   (arm and hand), released for **non-commercial use only**.

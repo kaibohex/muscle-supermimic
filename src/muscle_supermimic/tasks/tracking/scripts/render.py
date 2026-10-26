@@ -4,14 +4,14 @@
   apart by the size of its qpos): the simulated human with its muscles drawn, each colored by its activation when the
   recording holds them (light grey at rest to deep red; ``--no-activation`` keeps the model's own color), optionally
   with the reference motion overlaid as a translucent ghost (``--ghost``);
-* an MS-Human-700 motion clip (canonical or native .npz): kinematic replay of the reference alone, as the motion
+* an MS-Human-700 motion clip (canonical .npz): kinematic replay of the reference alone, as the motion
   library resamples it to 50 Hz, with a foot-ground clearance report (penetration / floating).
 
 Studio look, 50 fps: a white floor fading into a light sky, a near-vertical key light casting the contact shadow,
 and a camera that follows the root from a fixed direction, facing the body (25 deg off its front) at the start.
 
   uv run ms-render traj.npz out_dir/ [--clips walk] [--seconds 10] [--ghost]
-  uv run ms-render data/motions/walk.npz out_dir/ [--lock-hands]
+  uv run ms-render data/mshuman700_kit/314/walking_medium08_poses.npz out_dir/ [--lock-hands]
 """
 
 from __future__ import annotations
