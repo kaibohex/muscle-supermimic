@@ -1,8 +1,9 @@
 """Render videos of the human model, one per clip.
 
 * a rollout recorded by ``ms-eval --record`` (MS-Human-700, with or without locked hands, or MyoFullBody, told
-  apart by the size of its qpos): the simulated human with its muscles drawn, optionally with the reference motion
-  overlaid as a translucent ghost (``--ghost``);
+  apart by the size of its qpos): the simulated human with its muscles drawn, each colored by its activation when the
+  recording holds them (light grey at rest to deep red; ``--no-activation`` keeps the model's own color), optionally
+  with the reference motion overlaid as a translucent ghost (``--ghost``);
 * an MS-Human-700 motion clip (canonical or native .npz): kinematic replay of the reference alone, as the motion
   library resamples it to 50 Hz, with a foot-ground clearance report (penetration / floating).
 
@@ -31,6 +32,8 @@ from muscle_supermimic.utils.rotations import mat_to_quat
 GHOST_RGBA = (0.35, 0.6, 1.0, 0.3)
 SKY_TOP, SKY_HORIZON, FLOOR_RGBA = [0.95, 0.955, 0.96], [1.0, 1.0, 1.0], [0.985, 0.985, 0.985, 1.0]
 FPS = 50
+# muscles by activation: one hue, light to dark, linear in the activation up to ACT_FULL
+ACT_REST, ACT_RED, ACT_FULL = np.array([0.82, 0.79, 0.78]), np.array([0.72, 0.03, 0.05]), 1.0
 # entity variants a rollout can come from: (spec, compiled entity model)
 VARIANTS = {
     "MS-Human-700": (lambda: mshuman700_spec(), lambda: mshuman700.compiled_model()),
@@ -75,12 +78,27 @@ def build_scene(spec_fn, ghost: bool = False) -> mujoco.MjModel:
     return scene.compile()
 
 
+def muscle_tendons(m: mujoco.MjModel, entity: mujoco.MjModel) -> np.ndarray:
+    """The tendons the robot's muscles pull on, in its actuator order (the robot is attached first)."""
+    n = entity.nu
+    assert (m.actuator_trntype[:n] == mujoco.mjtTrn.mjTRN_TENDON).all()
+    return m.actuator_trnid[:n, 0]
+
+
+def activation_rgb(act: np.ndarray) -> np.ndarray:
+    """(n,) activations -> (n, 3) colors from ACT_REST (0) to ACT_RED (ACT_FULL and above)."""
+    w = np.clip(act / ACT_FULL, 0.0, 1.0)[:, None]
+    return ACT_REST + w * (ACT_RED - ACT_REST)
+
+
 def render(m: mujoco.MjModel, entity: mujoco.MjModel, qpos: np.ndarray, width: int, height: int,
-           feet: list[int]) -> tuple[list, np.ndarray]:  # fmt: skip
+           feet: list[int], act: np.ndarray | None = None) -> tuple[list, np.ndarray]:  # fmt: skip
     """Frames of a qpos sequence (T, m.nq) at 50 fps, the camera following the root of ``entity`` (the robot's
     model) from a fixed direction, 25 deg off the body's front at the first frame; also the lowest point of the
-    robot's foot collision geoms ``feet`` per frame [m]."""
+    robot's foot collision geoms ``feet`` per frame [m]. With ``act`` (T, entity.nu), each muscle is colored by its
+    activation."""
     data = mujoco.MjData(m)
+    tendons = muscle_tendons(m, entity) if act is not None else None
     root = m.body(f"robot/{ModelInfo(entity).root_name}").id
     renderer = mujoco.Renderer(m, height, width)
     data.qpos[:] = qpos[0]
@@ -91,8 +109,10 @@ def render(m: mujoco.MjModel, entity: mujoco.MjModel, qpos: np.ndarray, width: i
     cam.azimuth = np.degrees(np.arctan2(front[1], front[0])) + 180.0 + 25.0  # looking back at the body's front
     opt = mujoco.MjvOption()
     frames, foot_z, lookat = [], [], None
-    for x in qpos:
+    for i, x in enumerate(qpos):
         data.qpos[:] = x
+        if act is not None:
+            m.tendon_rgba[tendons, :3] = activation_rgb(act[i])
         mujoco.mj_forward(m, data)
         foot_z.append(min(data.geom_xpos[g, 2] - geom_half_height(m, data, g) for g in feet))
         target = data.xpos[root].copy()
@@ -144,9 +164,10 @@ def main():
     ap.add_argument("--lock-hands", action="store_true", help="motion replay on the locked-hands model")
     ap.add_argument("--clips", nargs="*", default=None, help="clip names (default: all)")
     ap.add_argument("--seconds", type=float, default=None, help="render at most this long per clip")
-    ap.add_argument("--width", type=int, default=1280)
-    ap.add_argument("--height", type=int, default=720)
+    ap.add_argument("--width", type=int, default=1920)
+    ap.add_argument("--height", type=int, default=1080)
     ap.add_argument("--ghost", action="store_true", help="overlay the reference motion as a translucent ghost")
+    ap.add_argument("--no-activation", action="store_true", help="keep the muscles' own color, not their activation")
     args = ap.parse_args()
     import mediapy
 
@@ -172,7 +193,8 @@ def main():
             steps = steps[: int(args.seconds * fps)]
         steps = steps[::every]
         q = np.concatenate((qpos[steps, c], ref[f[steps, c]]), -1) if args.ghost else qpos[steps, c]
-        frames, _ = render(m, entity, q, args.width, args.height, foot_geoms(m, entity))
+        act = d["act"][steps, c] if "act" in d.files and not args.no_activation else None
+        frames, _ = render(m, entity, q, args.width, args.height, foot_geoms(m, entity), act)
         out = os.path.join(args.out_dir, f"{name}.mp4")  # clip names can hold subfolders
         os.makedirs(os.path.dirname(out), exist_ok=True)
         mediapy.write_video(out, frames, fps=fps / every)
