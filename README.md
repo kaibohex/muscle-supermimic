@@ -108,7 +108,20 @@ The tasks register through mjlab's `mjlab.tasks` entry point with the SuperMimic
 
 ## Citation
 
-This code builds on the following works; please cite them if you use it:
+If you use this code, please cite:
+
+```bibtex
+@misc{muscle_supermimic_2026,
+  title        = {muscle-supermimic: Whole-Body Motion Tracking for Musculoskeletal
+                  Humanoids with One Differentiable World Model},
+  author       = {{The muscle-supermimic Authors}},
+  year         = {2026},
+  note         = {Technical report},
+  howpublished = {\url{PROJECT_PAGE_URL}}
+}
+```
+
+It builds on the following works; please cite them as well:
 
 - SuperMimic: Q. Liao et al., *SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable
   World Model*, CoRL 2026, [arXiv:2610.28480](https://arxiv.org/abs/2610.28480).
