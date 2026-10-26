@@ -9,9 +9,9 @@ muscles), on [mjlab](https://github.com/mujocolab/mjlab) / MuJoCo-Warp.
 > the checkpoints are updated along with them.
 
 <p align="center">
-  <img src="docs/assets/turn_left05_both.gif" width="400" alt="MyoFullBody and MS-Human-700 tracking a turning clip side by side">
-  <br><sub>MyoFullBody (left) and MS-Human-700 (right), their muscles in red, tracking a KIT turning clip, each
-  with its own policy.</sub>
+  <img src="docs/assets/teaser_three.gif" width="840" alt="MyoFullBody and MS-Human-700 side by side tracking three clips: turning left, walking forward, walking backward">
+  <br><sub>Three KIT training clips (turning left, walking forward, walking backward), each tracked by MyoFullBody
+  (left of the pair) and MS-Human-700 (right), their muscles in red, each with its own policy.</sub>
 </p>
 
 SuperMimic trains a tracking policy by backpropagating through rollouts of a learned world model of the
