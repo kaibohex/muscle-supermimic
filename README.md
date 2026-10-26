@@ -40,12 +40,6 @@ each of MuscleMimic's 108 held-out clips once from its first frame, without expl
   still training. An earlier run without the state-gradient clip reached 0.77 at iteration 12000 (10.7 hours,
   101 tracked).
 
-**The state-gradient clip.** On these bodies the policy gradient through imagination can grow without bound
-along the loop muscle-velocity observation → policy → activation → world model → muscle velocity. The flag
-clips, at every imagined step, each trajectory's gradient on the state it carries forward. It is on by default
-(`--agent.state-grad-clip 100`; SuperMimic has no such clip, and 0 turns it off); without it, our MS-Human-700 run
-did not take off in 6000 iterations. See [docs/training.md](docs/training.md).
-
 ## Install
 
 ```bash
