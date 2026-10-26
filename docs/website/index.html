@@ -18,18 +18,15 @@
     <h1 class="title">muscle-supermimic</h1>
     <!-- EDIT: the training time may change as the runs improve -->
     <p class="subtitle">Whole-body motion tracking for musculoskeletal humanoids with one differentiable world model, on one RTX&nbsp;5090 in 4&nbsp;hours</p>
-    <!-- EDIT: authors (and an affiliations line, .affiliations) once decided; the BibTeX below names them too -->
-    <div class="author-list"><span class="author">The muscle-supermimic Authors</span></div>
+    <div class="author-list">
+      <span class="author">Clone Robotics</span>
+    </div>
     <p class="dev-note"><i aria-hidden="true"></i>This project is under active development: its results keep improving, and the
       code, the technical report and the checkpoints are updated along with them.</p>
     <div class="link-buttons">
       <a class="btn" href="https://github.com/kaibohex/muscle-supermimic" target="_blank" rel="noopener">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         Code</a>
-      <!-- EDIT: coming soon; make it a link (<a class="btn" href="...">) once the technical report is out -->
-      <span class="btn disabled" aria-disabled="true">Technical report <span class="soon">coming soon</span></span>
-      <!-- EDIT: coming soon; link https://huggingface.co/Beanpow/muscle-supermimic (private for now) once it is public -->
-      <span class="btn disabled" aria-disabled="true">Checkpoints <span class="soon">coming soon</span></span>
     </div>
   </div>
 </header>
@@ -40,12 +37,11 @@
   <div class="container">
     <figure>
       <video class="video" src="static/videos/teaser.mp4" poster="static/videos/teaser_poster.jpg" muted loop playsinline preload="metadata" data-autoplay
-        aria-label="Three motion-capture clips, turning left, walking forward and walking backward, each tracked side by side by MyoFullBody (left, white bones) and MS-Human-700 (right, tan bones), their muscles drawn in red"></video>
-      <!-- EDIT: MyoFullBody's half is model_012000 of an earlier run; re-render with the current run -->
-      <figcaption><strong>MyoFullBody and MS-Human-700 tracking three training clips.</strong>Turning left, walking forward and
-        walking backward, from MuscleMimic's KIT set; in each pair MyoFullBody (354 muscles) on the left and MS-Human-700 (694
-        muscles) on the right, each driven by its own policy. MS-Human-700's muscles are colored by their activation, from
-        light grey (0) to deep red (1).</figcaption>
+        aria-label="Three motion-capture clips, turning left, walking forward and walking backward, each tracked side by side by MS-Human-700 (left, tan bones) and MyoFullBody (right, white bones), their muscles colored by activation"></video>
+      <figcaption><strong>MS-Human-700 and MyoFullBody tracking three training clips.</strong>Turning left, walking forward and
+        walking backward, from MuscleMimic's KIT set; in each pair MS-Human-700 (700 muscles) on the left and MyoFullBody (354
+        muscles) on the right, each driven by its own policy, both from iteration 10000. Muscles are colored by their activation,
+        from light grey (0) to deep red (1).</figcaption>
     </figure>
   </div>
 </section>
@@ -54,14 +50,14 @@
   <div class="container narrow">
     <h2>Overview</h2>
     <p class="lead">SuperMimic trains a whole-body tracking policy by backpropagating through rollouts of one learned world model of the
-      body. muscle-supermimic runs it on musculoskeletal humanoids: <strong><a href="https://lnsgroup.cc/research/MS-Human/">MS-Human-700</a></strong> (700 muscles) and <a href="https://github.com/MyoHub/myosuite">MyoSuite</a>'s
+      body. muscle-supermimic runs it on musculoskeletal humanoids: <strong><a href="https://github.com/google-deepmind/mujoco_menagerie/tree/main/ms_human_700">MS-Human-700</a></strong> (700 muscles) and <a href="https://github.com/MyoHub/myosuite">MyoSuite</a>'s
       <strong>MyoFullBody</strong> (354 muscles), on <a href="https://github.com/mujocolab/mjlab">mjlab</a> and MuJoCo-Warp,
       with <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a>'s tracking task.</p>
     <p>Between the policy and the skeleton sit activation dynamics, wrapping tendons and Hill-type force curves. Every observation,
       reward and termination is one analytic function, evaluated by the simulator and on imagined states alike, with a torch replica
       of MuJoCo's muscles in it. On MS-Human-700, one run on one GPU reaches a normalized return of 0.83 on MuscleMimic's 108
-      held-out clips in 4 hours (iteration 6500), 99 of them tracked to the end, and 0.90 after 7.1 hours, 107 tracked; it is
-      still training, and MyoFullBody is training with the same code.</p>
+      held-out clips in 4 hours (iteration 6500), 99 of them tracked to the end, and 0.89–0.91 from 4.9 hours on; MyoFullBody,
+      with the same code, reaches 0.83 after 6 hours (iteration 10000), 101 tracked. Both are still training.</p>
   </div>
 </section>
 
@@ -73,7 +69,7 @@
         <table>
           <thead><tr><th></th><th>MS-Human-700</th><th>MyoFullBody</th></tr></thead>
           <tbody>
-            <tr><th>Model</th><td><a href="https://github.com/LNSGroup/MS-Human-700">LNSGroup</a></td><td><a href="https://github.com/MyoHub/myosuite">MyoSuite</a>†</td></tr>
+            <tr><th>Model</th><td><a href="https://github.com/google-deepmind/mujoco_menagerie/tree/main/ms_human_700">LNSGroup</a></td><td><a href="https://github.com/MyoHub/myosuite">MyoSuite</a>†</td></tr>
             <tr><th>Joint DoF</th><td>37 + free root (33 with locked hands)</td><td>31 + free root (fingers disabled)</td></tr>
             <tr><th>Muscles</th><td>700 (694)</td><td>354</td></tr>
             <tr><th>Coupled joints</th><td>42 (38)</td><td>51</td></tr>
@@ -90,9 +86,9 @@
       </div>
       <figure>
         <video class="video wide43" src="static/videos/retarget_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay
-          aria-label="The same turning clip on MyoFullBody (left, white bones) and on MS-Human-700 (right, tan bones)"></video>
-        <figcaption><strong>One clip, two bodies.</strong>MuscleMimic's retargeted KIT motion on MyoFullBody (left) and, retargeted
-          from it by <code>ms-retarget-myofullbody</code>, on MS-Human-700 (right). The 27 leg and arm angles carry over exactly,
+          aria-label="The same turning clip on MS-Human-700 (left, tan bones) and on MyoFullBody (right, white bones)"></video>
+        <figcaption><strong>One clip, two bodies.</strong>A KIT motion on MS-Human-700 (left), retargeted by
+          <code>ms-retarget-myofullbody</code> from MuscleMimic's retargeted motion on MyoFullBody (right). The 27 leg and arm angles carry over exactly,
           spine and wrist flexion are fitted through the differentiable kinematics, and each clip is lowered by 0.74 cm so that the
           feet touch the ground.</figcaption>
       </figure>
@@ -165,68 +161,17 @@
   </div>
 </section>
 
-<section class="section" id="myofullbody">
-  <div class="container medium">
-    <h2>MyoFullBody</h2>
-    <p>One run on MuscleMimic's KIT split, 972 training clips (1.5 h of motion), 4096 parallel environments, MuscleMimic's solver
-      settings (Euler, 100 / 50 iterations), on one RTX 5090. The run is still training; the curves below are a snapshot at
-      iteration 5600 (3.3 hours), and its latest evaluated checkpoint, iteration 4000, scores 0.57 on the 108 held-out clips,
-      81 of them tracked to the end.</p>
-    <div class="two-col" style="margin-top: 1.2rem;">
-      <div class="chart" id="chart-eplen">
-        <div class="chart-title">Mean training episode length</div>
-        <div class="chart-sub">steps of 10 ms, per 50 iterations</div>
-      </div>
-      <div class="chart" id="chart-mfb-eval">
-        <div class="chart-title">Normalized return on the 108 held-out clips</div>
-        <div class="chart-sub">per evaluated checkpoint, every clip once from its first frame</div>
-      </div>
-    </div>
-    <!-- EDIT: everything below is model_012000 of an earlier run; replace it with the current run's checkpoint -->
-    <h3>An earlier run's checkpoint</h3>
-    <p>Until this run has trained, the numbers and clips below come from an earlier run: its checkpoint of
-      iteration 12000, after 10.7 hours on one RTX 5090. Evaluation runs every clip once
-      from its first frame without exploration noise.</p>
-    <div class="stats">
-      <div class="stat"><div class="stat-label">Training episode length, iteration 12000</div><div class="stat-value">268<small>steps (2.7 s)</small></div></div>
-      <div class="stat"><div class="stat-label">Training episodes ending in a failure</div><div class="stat-value">7 %</div></div>
-      <div class="stat"><div class="stat-label">Normalized return, 3 training clips</div><div class="stat-value">0.79<small>0 failed</small></div></div>
-      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips</div><div class="stat-value">0.77<small>7 failed</small></div></div>
-    </div>
-    <h3>Training clips</h3>
-    <div class="three-col">
-      <figure><video class="video square" src="static/videos/train_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning left"></video>
-        <div class="clip-label">Turn left · <code>359/turn_left05</code></div></figure>
-      <figure><video class="video square" src="static/videos/train_walk_forward05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking forward"></video>
-        <div class="clip-label">Walk forward · <code>11/WalkingStraightForwards05</code></div></figure>
-      <figure><video class="video square" src="static/videos/train_walk_backward04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking backward"></video>
-        <div class="clip-label">Walk backward · <code>7/WalkingStraightBackwards04</code></div></figure>
-    </div>
-    <h3>Held-out clips</h3>
-    <p>On MuscleMimic's 108 test clips, never seen in training, the normalized return is 0.77 and 101 clips are tracked to the
-      end. The 7 failures are three clockwise circles, two right turns, one walk and one walk along a handrail beam. Shown: for
-      three kinds of motion, the first test clip in the list that was tracked to the end, not picked by score.</p>
-    <div class="three-col" style="margin-top: 1rem;">
-      <figure><video class="video square" src="static/videos/test_walking_run06.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Running"></video>
-        <div class="clip-label">Run · <code>348/walking_run06</code></div></figure>
-      <figure><video class="video square" src="static/videos/test_turn_right09.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning right"></video>
-        <div class="clip-label">Turn right · <code>317/turn_right09</code></div></figure>
-      <figure><video class="video square" src="static/videos/test_ccw_circle04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking a counter-clockwise circle"></video>
-        <div class="clip-label">Counter-clockwise circle · <code>4/WalkInCounterClockwiseCircle04</code></div></figure>
-    </div>
-  </div>
-</section>
-
 <section class="section" id="mshuman">
   <div class="container medium">
     <h2>MS-Human-700</h2>
-    <p>MS-Human-700 with locked hands (694 muscles) on the same 972 training clips, retargeted to it, with MyoFullBody's
-      settings, on one RTX 5090. The run is still training; this is a snapshot at iteration 12050 (7.5 hours), with every
-      checkpoint up to iteration 11500 evaluated.</p>
+    <p>One run of MS-Human-700 with locked hands (694 muscles) on MuscleMimic's KIT split, 972 training clips (1.5 h of
+      motion) retargeted to it, 4096 parallel environments, MuscleMimic's solver settings (Euler, 100 / 50 iterations), on one
+      RTX 5090. The run is still training; this is a snapshot at iteration 16800 (10.6 hours), with every
+      checkpoint up to iteration 16000 evaluated.</p>
     <div class="stats">
-      <div class="stat"><div class="stat-label">Training episode length, iterations 11350–12050</div><div class="stat-value">270<small>steps (2.7 s)</small></div></div>
+      <div class="stat"><div class="stat-label">Training episode length, iterations 16100–16800</div><div class="stat-value">264<small>steps (2.6 s)</small></div></div>
       <div class="stat"><div class="stat-label">Training episodes ending in a failure, the same iterations</div><div class="stat-value">0.1 %</div></div>
-      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips, iteration 11500 (7.1 hours)</div><div class="stat-value">0.90<small>107 tracked</small></div></div>
+      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips, iteration 16000 (10.1 hours)</div><div class="stat-value">0.91<small>104 tracked</small></div></div>
       <div class="stat"><div class="stat-label">The same after 4 hours (iteration 6500)</div><div class="stat-value">0.83<small>99 tracked</small></div></div>
     </div>
     <div class="two-col">
@@ -255,6 +200,57 @@
   </div>
 </section>
 
+<section class="section" id="myofullbody">
+  <div class="container medium">
+    <h2>MyoFullBody</h2>
+    <p>One run on the same 972 training clips, as MuscleMimic retargeted them to MyoFullBody, with MS-Human-700's settings, on
+      one RTX 5090. The run is still training; the curves below are a snapshot at
+      iteration 10900 (6.5 hours), and its checkpoint of iteration 10000 scores 0.83 on the 108 held-out clips, 101 of them
+      tracked to the end.</p>
+    <div class="two-col" style="margin-top: 1.2rem;">
+      <div class="chart" id="chart-eplen">
+        <div class="chart-title">Mean training episode length</div>
+        <div class="chart-sub">steps of 10 ms, per 50 iterations</div>
+      </div>
+      <div class="chart" id="chart-mfb-eval">
+        <div class="chart-title">Normalized return on the 108 held-out clips</div>
+        <div class="chart-sub">per evaluated checkpoint, every clip once from its first frame</div>
+      </div>
+    </div>
+    <h3>The checkpoint of iteration 10000</h3>
+    <p>After 6.0 hours on one RTX 5090. Evaluation runs every clip once from its first frame without exploration noise.
+      Each muscle is colored by its activation, from light grey (0) to deep red (1).</p>
+    <div class="stats">
+      <div class="stat"><div class="stat-label">Training episode length, iteration 10000</div><div class="stat-value">291<small>steps (2.9 s)</small></div></div>
+      <div class="stat"><div class="stat-label">Training episodes ending in a failure</div><div class="stat-value">4 %</div></div>
+      <div class="stat"><div class="stat-label">Normalized return, 3 training clips</div><div class="stat-value">0.83<small>0 failed</small></div></div>
+      <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips</div><div class="stat-value">0.83<small>7 failed</small></div></div>
+    </div>
+    <h3>Training clips</h3>
+    <div class="three-col">
+      <figure><video class="video square" src="static/videos/train_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning left"></video>
+        <div class="clip-label">Turn left · <code>359/turn_left05</code></div></figure>
+      <figure><video class="video square" src="static/videos/train_walk_forward05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking forward"></video>
+        <div class="clip-label">Walk forward · <code>11/WalkingStraightForwards05</code></div></figure>
+      <figure><video class="video square" src="static/videos/train_walk_backward04.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking backward"></video>
+        <div class="clip-label">Walk backward · <code>7/WalkingStraightBackwards04</code></div></figure>
+    </div>
+    <h3>Held-out clips</h3>
+    <p>On MuscleMimic's 108 test clips, never seen in training, the normalized return is 0.83 and 101 clips are tracked to the
+      end. The 7 failures are three walks with a support, one clockwise and one counter-clockwise circle, one left turn and one
+      walk. Shown: for three kinds of motion, the first test clip in the list that was tracked to the end in every evaluation of
+      this checkpoint (runs on a CPU and a GPU disagree on a few borderline clips), not picked by score.</p>
+    <div class="three-col" style="margin-top: 1rem;">
+      <figure><video class="video square" src="static/videos/test_walking_run06.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Running"></video>
+        <div class="clip-label">Run · <code>348/walking_run06</code></div></figure>
+      <figure><video class="video square" src="static/videos/test_right_turn03.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning right"></video>
+        <div class="clip-label">Turn right · <code>7/RightTurn03</code></div></figure>
+      <figure><video class="video square" src="static/videos/test_ccw_circle08.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Walking a counter-clockwise circle"></video>
+        <div class="clip-label">Counter-clockwise circle · <code>4/WalkInCounterClockwiseCircle08</code></div></figure>
+    </div>
+  </div>
+</section>
+
 <section class="section" id="start">
   <div class="container narrow">
     <h2>Get started</h2>
@@ -273,27 +269,6 @@ uv run train Mjlab-SuperMimic-Flat-MyoFullBody \
   </div>
 </section>
 
-<section class="section" id="citation">
-  <div class="container narrow">
-    <h2>Citation</h2>
-    <div class="bibtex">
-      <button class="copy-btn" type="button" data-target="bibtex-text">Copy</button>
-<pre><code id="bibtex-text">@misc{muscle_supermimic_2026,
-  title        = {muscle-supermimic: Whole-Body Motion Tracking for Musculoskeletal
-                  Humanoids with One Differentiable World Model},
-  author       = {{The muscle-supermimic Authors}},
-  year         = {2026},
-  note         = {Technical report},
-  howpublished = {\url{PROJECT_PAGE_URL}}
-}</code></pre>
-    </div>
-    <p style="margin-top: 0.9rem;">Please also cite the works it builds on: SuperMimic
-      (<a href="https://arxiv.org/abs/2610.28480">arXiv:2610.28480</a>), MuscleMimic
-      (<a href="https://arxiv.org/abs/2603.25544">arXiv:2603.25544</a>) and
-      <a href="https://github.com/LNSGroup/MS-Human-700">MS-Human-700</a>.</p>
-  </div>
-</section>
-
 <section class="section" id="acknowledgments">
   <div class="container narrow">
     <h2>Acknowledgments</h2>
@@ -301,7 +276,7 @@ uv run train Mjlab-SuperMimic-Flat-MyoFullBody \
       <a href="https://github.com/zita-ch/supermimic_vibed">supermimic_vibed</a>. MyoFullBody, derived from
       <a href="https://github.com/MyoHub/myosuite">MyoSuite</a>, comes from <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a>'s
       <code>musclemimic-models</code>, as do its tracking task and the retargeted KIT motions; MS-Human-700 from
-      <a href="https://github.com/LNSGroup/MS-Human-700">LNSGroup</a>; the simulation framework is
+      <a href="https://github.com/google-deepmind/mujoco_menagerie/tree/main/ms_human_700">MuJoCo Menagerie</a>; the simulation framework is
       <a href="https://github.com/mujocolab/mjlab">mjlab</a> on MuJoCo-Warp. The motions are from the KIT set of AMASS. The
       MyoFullBody arm and hand derive from MoBL-ARMS, released for non-commercial use only. The render style of the videos is
       inspired by <a href="https://lzyang2000.github.io/morphmimic/">MorphMimic</a>. We thank Claude (Anthropic), with which the code was

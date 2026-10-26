@@ -8,9 +8,10 @@ muscles), on [mjlab](https://github.com/mujocolab/mjlab) / MuJoCo-Warp.
 > the checkpoints are updated along with them.
 
 <p align="center">
-  <img src="docs/assets/teaser_three.gif" width="840" alt="MyoFullBody and MS-Human-700 side by side tracking three clips: turning left, walking forward, walking backward">
-  <br><sub>Three KIT training clips (turning left, walking forward, walking backward), each tracked by MyoFullBody
-  (left of the pair) and MS-Human-700 (right), their muscles in red, each with its own policy.</sub>
+  <img src="docs/assets/teaser_three.gif" width="840" alt="MS-Human-700 and MyoFullBody side by side tracking three clips: turning left, walking forward, walking backward">
+  <br><sub>Three KIT training clips (turning left, walking forward, walking backward), each tracked by MS-Human-700
+  (left of the pair) and MyoFullBody (right), each with its own policy at iteration 10000; muscles are colored by
+  activation, from light grey (0) to deep red (1).</sub>
 </p>
 
 SuperMimic trains a tracking policy by backpropagating through rollouts of a learned world model of the
@@ -32,9 +33,9 @@ Both bodies train on MuscleMimic's KIT split (972 training clips) with the defau
 5090. Evaluation plays each of MuscleMimic's 108 held-out clips once from its first frame, without exploration noise.
 
 - **MS-Human-700** (locked hands, the clips retargeted to it): a normalized return of 0.83 after 4 hours
-  (iteration 6500, 99 of 108 clips tracked to the end), 0.89-0.91 from 5.9 hours on, and 0.90 after 7.1 hours
-  (iteration 11500, 107 tracked); iteration 10000 tracks all 108. Still training.
-- **MyoFullBody**: a run on the current code scores 0.57 after 2.4 hours (iteration 4000, 81 tracked).
+  (iteration 6500, 99 of 108 clips tracked to the end), 0.89-0.91 from 4.9 hours on, and 0.91 after 10.1 hours
+  (iteration 16000, 104 tracked); iterations 10000, 14000, 14500 and 15500 track all 108. Still training.
+- **MyoFullBody**: 0.83 after 6.0 hours (iteration 10000, 101 tracked). Still training.
 
 ## Install
 
@@ -106,28 +107,15 @@ The tasks register through mjlab's `mjlab.tasks` entry point with the SuperMimic
 | `third_party/MS-Human-700/` | the upstream MS-Human-700 model (git submodule) |
 | `tests/` | FK, muscles and activation vs MuJoCo, retargeting, simulator vs analytic terms, a tiny end-to-end training run |
 
-## Citation
+## Related work
 
-If you use this code, please cite:
-
-```bibtex
-@misc{muscle_supermimic_2026,
-  title        = {muscle-supermimic: Whole-Body Motion Tracking for Musculoskeletal
-                  Humanoids with One Differentiable World Model},
-  author       = {{The muscle-supermimic Authors}},
-  year         = {2026},
-  note         = {Technical report},
-  howpublished = {\url{PROJECT_PAGE_URL}}
-}
-```
-
-It builds on the following works; please cite them as well:
+It builds on the following works:
 
 - SuperMimic: Q. Liao et al., *SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable
   World Model*, CoRL 2026, [arXiv:2610.28480](https://arxiv.org/abs/2610.28480).
 - MuscleMimic: Li et al., *Towards Embodied AI with MuscleMimic*,
   [arXiv:2603.25544](https://arxiv.org/abs/2603.25544), [code](https://github.com/amathislab/musclemimic).
-- MS-Human-700: [LNSGroup/MS-Human-700](https://github.com/LNSGroup/MS-Human-700).
+- MS-Human-700: [MuJoCo Menagerie, ms_human_700](https://github.com/google-deepmind/mujoco_menagerie/tree/main/ms_human_700).
 - mjlab: [mujocolab/mjlab](https://github.com/mujocolab/mjlab).
 
 ## License and attribution

@@ -1,4 +1,4 @@
-// muscle-supermimic project page: lazy video playback, BibTeX copy, the MS-Human-700 clip gallery, and the charts
+// muscle-supermimic project page: lazy video playback, the MS-Human-700 clip gallery, and the charts
 // (SVG drawn from window.CHART_DATA, re-drawn on resize; crosshair tooltips; the time axis shows training
 // iterations while hovered, or tapped on a touch screen).
 
@@ -217,14 +217,15 @@ function charts() {
   const wmBand = (h) => [{ from: 0, to: h, label: 'WM only' }];
   const hEnd = (hs) => Math.ceil(Math.max(...hs) * 2) / 2;
   const iters = (r) => ({ h: [0, ...r.wall_h], it: [0, ...r.iteration] });  // a run's training log: hours -> iteration
+  const lenTop = (v) => Math.max(300, Math.ceil(Math.max(...v) / 100) * 100);  // episodes have no time limit
 
   // MyoFullBody: one run, its evaluated checkpoint marked once there is one
   const mf = D.mfb, ck = mf.checkpoint, k = ck ? mf.iteration.indexOf(ck) : mf.iteration.length - 1, mfEnd = hEnd(mf.wall_h);
   const ckName = `model_${String(ck).padStart(6, '0')}`;
   const h1 = document.getElementById('chart-eplen');
-  if (h1) lineChart(h1, { x: mf.wall_h, xDomain: [0, mfEnd], yDomain: [0, 300], xLabel: H_LABEL, xName: '', xFmt: hFmt, iter: iters(mf),
+  if (h1) lineChart(h1, { x: mf.wall_h, xDomain: [0, mfEnd], yDomain: [0, lenTop(mf.ep_len)], xLabel: H_LABEL, xName: '', xFmt: hFmt, iter: iters(mf),
     series: [{ name: 'steps', values: mf.ep_len, it: mf.iteration, color: S1 }], bands: wmBand(at(mf, 500)),
-    markers: ck ? [{ x: mf.wall_h[k], y: mf.ep_len[k], label: ckName, color: S1, anchor: 'end', dy: 22 }] : [],
+    markers: ck ? [{ x: mf.wall_h[k], y: mf.ep_len[k], label: ckName, color: S1, anchor: 'end', dy: 40 }] : [],
     yFmt: (v) => v.toFixed(0), aria: `Mean training episode length rises from about 60 to ${mf.ep_len[k].toFixed(0)} steps in ${mf.wall_h[k].toFixed(1)} hours of training` });
   const h2 = document.getElementById('chart-mfb-eval');
   if (h2) lineChart(h2, { x: mf.eval.wall_h, xDomain: [0, mfEnd], yDomain: [0, 1], xLabel: H_LABEL, xName: '', xFmt: hFmt, iter: iters(mf),
@@ -235,7 +236,7 @@ function charts() {
   const ms = D.mshuman;
   const msEnd = ms ? hEnd(ms.train.wall_h) : 1;
   const h7 = document.getElementById('chart-ms-eplen');
-  if (h7 && ms) lineChart(h7, { x: ms.train.wall_h, xDomain: [0, msEnd], yDomain: [0, 300], xLabel: H_LABEL, xName: '', xFmt: hFmt, iter: iters(ms.train),
+  if (h7 && ms) lineChart(h7, { x: ms.train.wall_h, xDomain: [0, msEnd], yDomain: [0, lenTop(ms.train.ep_len)], xLabel: H_LABEL, xName: '', xFmt: hFmt, iter: iters(ms.train),
     series: [{ name: 'steps', values: ms.train.ep_len, it: ms.train.iteration, color: S1 }], bands: wmBand(at(ms.train, 500)), yFmt: (v) => v.toFixed(0),
     aria: `Episode length climbs past 250 steps within 2 hours of training and reaches ${ms.train.ep_len.at(-1).toFixed(0)}` });
   const h8 = document.getElementById('chart-ms-eval');
@@ -288,12 +289,4 @@ function lazyVideos() {
   vids.forEach((v) => io.observe(v));
 }
 
-function copyButtons() {
-  document.querySelectorAll('.copy-btn').forEach((b) => b.addEventListener('click', async () => {
-    const text = document.getElementById(b.dataset.target).textContent;
-    try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; } catch { b.textContent = 'Select and copy'; }
-    setTimeout(() => (b.textContent = 'Copy'), 1500);
-  }));
-}
-
-document.addEventListener('DOMContentLoaded', () => { charts(); gallery(); lazyVideos(); copyButtons(); });
+document.addEventListener('DOMContentLoaded', () => { charts(); gallery(); lazyVideos(); });

@@ -97,7 +97,7 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .hero { background: var(--bg-hero); padding: 2.75rem 1rem 2rem; text-align: center; border-bottom: 1px solid var(--border); }
 .title { font-size: clamp(1.6rem, 4vw, 2.4rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; margin-bottom: 0.6rem; font-family: var(--font-mono); }
 .subtitle { font-size: clamp(1.05rem, 2.2vw, 1.3rem); font-weight: 400; color: var(--text-muted); max-width: 40rem; margin: 0 auto 0.9rem; line-height: 1.4; }
-.author-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem 1.5rem; margin-bottom: 1.1rem; font-size: 1.05rem; }
+.author-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem 1.5rem; margin-bottom: 0.45rem; font-size: 1.05rem; }
 .author { font-weight: 500; }
 .dev-note { display: inline-flex; align-items: baseline; gap: 0.5rem; max-width: 44rem; margin: 0 auto 1.1rem; padding: 0.4rem 0.9rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.85rem; line-height: 1.4; color: var(--text-muted); text-align: left; }
 .dev-note i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--series-1); transform: translateY(-1px); }
@@ -106,9 +106,6 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .link-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; margin-bottom: 0.9rem; }
 .btn { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.45rem 1rem; border-radius: var(--radius); font-size: 0.85rem; font-weight: 500; color: var(--text); background: transparent; border: 1px solid var(--border); text-decoration: none; transition: border-color .15s; }
 .btn:hover { border-color: var(--text); }
-.btn.disabled { color: var(--text-light); cursor: default; }
-.btn.disabled:hover { border-color: var(--border); }
-.btn .soon { font-size: 0.72rem; font-weight: 500; color: var(--text-light); border: 1px solid var(--border); border-radius: 999px; padding: 0 0.45rem; }
 .btn svg { width: 15px; height: 15px; fill: currentColor; }
 
 /* ── Figures and media ────────────────────────────────────── */
@@ -182,11 +179,6 @@ thead th { color: var(--text-muted); font-weight: 500; font-size: 0.82rem; }
 .chip[aria-pressed="true"] { border-color: var(--series-1); background: var(--series-1-wash); color: var(--text); }
 .gallery-clips .chip { border-radius: var(--radius); font-family: var(--font-mono); font-size: 0.72rem; }
 .gallery-info { font-size: 0.85rem; color: var(--text-muted); margin-top: 1rem; }
-
-/* ── BibTeX ───────────────────────────────────────────────── */
-.bibtex { position: relative; }
-.copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; font-family: var(--font-sans); font-size: 0.75rem; padding: 0.2rem 0.6rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text-muted); cursor: pointer; }
-.copy-btn:hover { color: var(--text); border-color: var(--text); }
 
 /* ── Footer ───────────────────────────────────────────────── */
 footer { border-top: 1px solid var(--border); padding: 1.5rem 1rem 2.5rem; text-align: center; font-size: 0.8rem; color: var(--text-light); }
