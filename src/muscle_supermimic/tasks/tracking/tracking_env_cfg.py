@@ -115,7 +115,8 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
         sim=SimulationCfg(
             nconmax=48,
             njmax=320,
-            mujoco=MujocoCfg(timestep=TIMESTEP, iterations=10, ls_iterations=20),
+            # MuscleMimic's solver settings; as fast as mjlab's implicitfast at 10 / 20 on these models
+            mujoco=MujocoCfg(timestep=TIMESTEP, integrator="euler", iterations=100, ls_iterations=50),
         ),
         decimation=DECIMATION,  # 100 Hz control, as MyoFullBody
         episode_length_s=300.0,  # MuscleMimic's horizon (30000 steps): episodes end at the clip's last frame

@@ -213,11 +213,11 @@ def test_state_grad_clip(setup, tmp_path):
     import csv
 
     env, runner = setup
-    runner.cfg.state_grad_clip = 1e-12
+    default, runner.cfg.state_grad_clip = runner.cfg.state_grad_clip, 1e-12
     try:
         runner.log_dir = str(tmp_path)
         runner.learn(num_learning_iterations=4)
     finally:
-        runner.cfg.state_grad_clip = 0.0
+        runner.cfg.state_grad_clip = default
     rows = list(csv.DictReader(open(os.path.join(tmp_path, "train_log.csv"))))
     assert float(rows[-1]["pi_state_clip"]) == 1.0 and float(rows[-1]["pi_gradnorm"]) > 0

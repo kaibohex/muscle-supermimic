@@ -63,12 +63,13 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     value_clip: bool = False
     """Clamp bootstrapped values to the largest attainable return, max step reward / (1 - gamma), so the policy
     cannot exploit critic overestimation beyond it. Off in SuperMimic."""
-    state_grad_clip: float = 0.0
-    """Opt-in, not in SuperMimic: at every imagined step, clip each trajectory's gradient with respect to what is
-    carried to the next step (body state, activation, touch, last action) to this norm, measured on that trajectory's
-    own objective (the loss averages pi_batch of them). It bounds the closed-loop growth of the BPTT gradient
-    (observation -> policy -> activation -> world model -> observation) that lets a few imagined trajectories dominate
-    an update (MS-Human-700: pre-clip policy gradient norms of 1e2-1e5, ~100 % from 1 % of the trajectories). 0: off."""
+    state_grad_clip: float = 100.0
+    """Not in SuperMimic (where it is 0, off): at every imagined step, clip each trajectory's gradient with respect
+    to what is carried to the next step (body state, activation, touch, last action) to this norm, measured on that
+    trajectory's own objective (the loss averages pi_batch of them). It bounds the closed-loop growth of the BPTT
+    gradient (observation -> policy -> activation -> world model -> observation) that lets a few imagined
+    trajectories dominate an update (MS-Human-700: pre-clip policy gradient norms of 1e2-1e5, ~100 % from 1 % of the
+    trajectories). 0: off."""
 
     # optimization
     lr: float = 2e-4
