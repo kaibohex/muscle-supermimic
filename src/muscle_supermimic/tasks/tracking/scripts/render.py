@@ -63,8 +63,11 @@ def build_scene(spec_fn, ghost: bool = False) -> mujoco.MjModel:
     # some emission keeps the lit floor white; the shadow still shows
     scene.add_material(name="floor", rgba=FLOOR_RGBA, emission=0.22, reflectance=0.0, specular=0.0, shininess=0.0)
     scene.worldbody.add_geom(type=mujoco.mjtGeom.mjGEOM_PLANE, size=[0, 0, 0.05], material="floor")
+    # the light follows the body's center of mass: a directional light's shadow map covers only the model's extent
+    # around the light, so a fixed light loses the shadow once the body walks a few meters away
     scene.worldbody.add_light(pos=[0, 0, 6], dir=[0.08, 0.12, -1.0], type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL,
-                              diffuse=[0.55] * 3, specular=[0.15] * 3, castshadow=True)  # fmt: skip
+                              mode=mujoco.mjtCamLight.mjCAMLIGHT_TRACKCOM, diffuse=[0.55] * 3, specular=[0.15] * 3,
+                              castshadow=True)  # fmt: skip
     for prefix, is_ghost in (("robot/", False), ("ref/", True))[: 2 if ghost else 1]:
         spec = spec_fn()
         for geom in spec.geoms:
