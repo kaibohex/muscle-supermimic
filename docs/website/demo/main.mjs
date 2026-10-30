@@ -167,10 +167,19 @@ function placeMuscles(seg) {
 
 // camera follows the root (smoothed), keeping the user's orbit offset
 const look = new THREE.Vector3(0, 0, 0.9);
-let follow = true, lookInit = false, episode = -1;
-function followRoot(root) {
+let follow = true, lookInit = false, episode = -1, shownClip = -1; // shownClip: -1 after a new scene
+function followRoot(root, facing) {
   const target = new THREE.Vector3(root[0], root[1], 0.9);
-  if (!lookInit) { look.copy(target); lookInit = true; }
+  if (!lookInit) {
+    look.copy(target);
+    lookInit = true;
+    if (facing) { // in front of the body, 30 degrees to its left, at the camera's current distance and height
+      const off = camera.position.clone().sub(controls.target), h = off.z;
+      const dist = Math.hypot(off.x, off.y), a = Math.atan2(facing[1], facing[0]) + Math.PI / 6;
+      controls.target.copy(target);
+      camera.position.set(target.x + dist * Math.cos(a), target.y + dist * Math.sin(a), target.z + h);
+    }
+  }
   look.lerp(target, 0.08);
   if (follow) {
     const delta = look.clone().sub(controls.target);
@@ -213,6 +222,7 @@ worker.onmessage = (ev) => {
     sel.value = String(msg.clip);
     $('title').textContent = `${model.name}, live in your browser`;
     $('muscles').textContent = msg.nmuscles;
+    shownClip = -1;
     $('boot').hidden = true;
     $('dock').hidden = false;
   } else if (msg.type === 'frame') {
@@ -220,9 +230,12 @@ worker.onmessage = (ev) => {
     ghostGroup.visible = !!msg.ghost;
     if (msg.ghost) placeGeoms(ghost, msg.ghost);
     placeMuscles(msg.seg);
-    if (msg.episode !== episode) lookInit = false; // a reset moves the body back to the clip's start: cut, don't pan
+    // a reset moves the body back to the clip's start: cut, don't pan; face the body when the clip or model is new
+    const newClip = msg.clip !== shownClip;
+    if (msg.episode !== episode) lookInit = false;
     episode = msg.episode;
-    followRoot(msg.root);
+    shownClip = msg.clip;
+    followRoot(msg.root, !lookInit && newClip ? msg.facing : null);
     drawGrab(msg.grab);
     $('progress').style.width = `${(100 * msg.frame) / Math.max(1, msg.length - 1)}%`;
     $('time').textContent = `${fmt(msg.frame)} / ${fmt(msg.length - 1)}`;

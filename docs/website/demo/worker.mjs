@@ -4,7 +4,7 @@
 
 import loadMujoco from 'https://cdn.jsdelivr.net/npm/@mujoco/mujoco@3.11.0/mujoco.js';
 import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.wasm.min.mjs';
-import { Tracker } from './tracker.mjs';
+import { Tracker, quatToMat } from './tracker.mjs';
 
 const MUJOCO = 'https://cdn.jsdelivr.net/npm/@mujoco/mujoco@3.11.0/', ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
 ort.env.wasm.numThreads = 1; // a static host cannot send the cross-origin isolation headers threads need
@@ -17,6 +17,7 @@ const FAIL_DIST = 1.0; // the task's root-position termination [m]
 let tr, mj, dg, geoms, tendons, muscleOf, dataUrl;
 const state = { playing: true, policy: true, ghost: true, clip: 0, failed: false, failedAt: 0 };
 let simT = 0, wallT0 = 0, stepMs = 0, episode = 0; // episode: counts resets, so the page can cut its camera
+let facing = [1, 0]; // the body's forward direction (horizontal) at the reset
 let pendingModel = null, pendingClip = null; // requests the loop applies between steps
 const clipFrames = new Map(); // clip file URL -> its frames, inflated
 
@@ -130,6 +131,10 @@ function sceneDescription() {
 function reset(clip, frames) {
   tr.reset(clip, frames);
   episode++;
+  // the task's root frame (the free joint's rotation times R_off) has x forward, for both bodies
+  const q = tr.d.qpos, fq = tr.meta.free_q, R = new Float64Array(9), o = tr.meta.R_off;
+  quatToMat(q[fq[3]], q[fq[4]], q[fq[5]], q[fq[6]], R);
+  facing = [R[0] * o[0] + R[1] * o[3] + R[2] * o[6], R[3] * o[0] + R[4] * o[3] + R[5] * o[6]];
   state.clip = clip;
   state.failed = false;
   simT = 0;
@@ -219,7 +224,7 @@ async function step() {
   const body = poses(tr.d), seg = segments(tr.d), ghost = state.ghost ? ghostPoses() : null;
   const c = tr.meta.clips[state.clip];
   const root = tr.meta.free_q.slice(0, 3).map((a) => tr.d.qpos[a]);
-  post({ type: 'frame', body, ghost, seg, root, grab: tr.grabbed ? [...tr.grabPoint(), ...tr.grabbed.target] : null, frame: tr.f, episode, length: c.length, stepMs, failed: state.failed, playing: state.playing },
+  post({ type: 'frame', body, ghost, seg, root, grab: tr.grabbed ? [...tr.grabPoint(), ...tr.grabbed.target] : null, frame: tr.f, episode, clip: state.clip, facing, length: c.length, stepMs, failed: state.failed, playing: state.playing },
     [body.xpos.buffer, body.xmat.buffer, seg.buffer, ...(ghost ? [ghost.xpos.buffer, ghost.xmat.buffer] : [])]);
 }
 
