@@ -136,7 +136,8 @@ def store_fp16(path: str) -> None:
 
 
 def gzip_file(path: str) -> str:
-    with open(path, "rb") as src, gzip.open(path + ".gz", "wb", compresslevel=9) as dst:
+    """Gzip a file in place, without a timestamp: the same content re-exported gives the same bytes."""
+    with open(path, "rb") as src, open(path + ".gz", "wb") as raw, gzip.GzipFile("", "wb", 9, raw, mtime=0) as dst:
         shutil.copyfileobj(src, dst)
     os.remove(path)
     return os.path.basename(path) + ".gz"
