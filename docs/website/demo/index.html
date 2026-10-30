@@ -33,11 +33,12 @@
     #legend { display: flex; align-items: center; gap: 8px; margin-top: 8px; font: 11px/1 var(--mono); color: var(--ink2); }
     #legend i { width: 96px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--rest), var(--accent)); }
     #dock { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(var(--edge), env(safe-area-inset-bottom));
-      width: min(760px, calc(100vw - 2 * var(--edge))); padding: 10px 12px; display: grid; gap: 8px; }
+      width: min(900px, calc(100vw - 2 * var(--edge))); padding: 10px 12px; display: grid; gap: 8px; }
     .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     button, select { font: 500 13px/1 var(--font); color: var(--ink); background: #fff; border: 0; border-radius: 8px;
       box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.15); padding: 7px 12px; cursor: pointer; }
     select { max-width: 280px; min-width: 0; flex: 1 1 180px; }
+    #model { flex: 0 0 auto; }
     button:hover, select:hover { background: #fafafa; }
     :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     label { display: inline-flex; align-items: center; gap: 5px; color: var(--ink2); font-size: 13px; cursor: pointer; user-select: none; }
@@ -68,17 +69,19 @@
   </script>
 </head>
 <body>
-  <canvas id="view" aria-label="MyoFullBody tracking a motion-capture clip"></canvas>
+  <canvas id="view" aria-label="A musculoskeletal body tracking a motion-capture clip"></canvas>
   <div id="head" class="glass">
-    <div class="title"><h1>MyoFullBody, live in your browser</h1>
+    <div class="title"><h1 id="title">Live in your browser</h1>
       <button id="about" type="button" aria-expanded="true" aria-controls="aboutText">Hide</button></div>
     <div id="aboutText">
-    <p>354 muscles driven by the tracking policy, simulated by MuJoCo (WebAssembly) at 100 Hz, on motion-capture clips
+    <p><span id="muscles"></span> muscles driven by the tracking policy, simulated by MuJoCo (WebAssembly) at 100 Hz, on motion-capture clips
       held out from training.</p>
     <p class="more">Blue: the reference motion. <span id="hint">Drag the body to push it; drag elsewhere to orbit.</span></p>
-    <details id="credits"><summary>Credits &amp; licenses</summary><a href="../">muscle-supermimic</a> · MyoFullBody from <a href="https://github.com/MyoHub/myosuite">MyoSuite</a>
-      as packaged by <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a> (Apache-2.0; arm and hand from MoBL-ARMS,
-      non-commercial use only) · KIT motions retargeted by MuscleMimic</details>
+    <details id="credits"><summary>Credits &amp; licenses</summary><a href="../">muscle-supermimic</a> ·
+      <a href="https://github.com/google-deepmind/mujoco_menagerie/tree/main/ms_human_700">MS-Human-700</a> (Apache-2.0) ·
+      MyoFullBody from <a href="https://github.com/MyoHub/myosuite">MyoSuite</a> as packaged by
+      <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a> (Apache-2.0; arm and hand from MoBL-ARMS, non-commercial use
+      only) · KIT motions retargeted by MuscleMimic, onto MS-Human-700 from MyoFullBody</details>
     </div>
     <div id="legend"><span>activation 0</span><i></i><span>1</span></div>
   </div>
@@ -88,6 +91,7 @@
     <div class="row">
       <button id="play" type="button">Pause</button>
       <button id="restart" type="button">Restart</button>
+      <select id="model" aria-label="Model"></select>
       <select id="clip" aria-label="Motion clip"></select>
       <label class="toggles"><input id="policy" type="checkbox" checked> Policy</label>
       <label class="toggles"><input id="ghost" type="checkbox" checked> Reference</label>

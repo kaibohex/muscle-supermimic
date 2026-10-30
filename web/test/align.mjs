@@ -20,9 +20,9 @@ const meta = JSON.parse(read('meta.json'));
 if (!meta.reference) throw new Error('no reference: run ms-export-web with --reference');
 const mj = await loadMujoco();
 const tr = await Tracker.create(mj, ort, {
-  meta, model: new Uint8Array(read(meta.files.model)), policy: new Uint8Array(read(meta.files.policy)), frames: buf(meta.files.frames),
-  init: buf(meta.files.init),
+  meta, model: new Uint8Array(read(meta.files.model)), policy: new Uint8Array(read(meta.files.policy)), init: buf(meta.files.init),
 });
+const clipFrames = meta.clips.map((c) => buf(c.file));
 const ref = new Float32Array(buf('reference.bin')), refState = new Float64Array(buf('reference_state.bin'));
 const { nobs, nu, nq, nv, na } = meta;
 const rw = nobs + nu, sw = nq + nv + na + nv;
@@ -36,13 +36,13 @@ const stride = Math.max(1, Math.floor(rows.length / 400));
 let t0 = performance.now(), n = 0;
 for (let r = 0; r < rows.length; r += stride) {
   const [ci, t] = rows[r], s = refState.subarray(r * sw, (r + 1) * sw), o = ref.subarray(r * rw, r * rw + nobs);
-  tr.reset(ci);
+  tr.reset(ci, clipFrames[ci]);
   tr.d.qpos.set(s.subarray(0, nq));
   tr.d.qvel.set(s.subarray(nq, nq + nv));
   tr.d.act.set(s.subarray(nq + nv, nq + nv + na));
   tr.d.qacc_warmstart.set(s.subarray(nq + nv + na));
   mj.mj_forward(tr.m, tr.d);
-  tr.f = meta.clips[ci].start + t;
+  tr.f = t;
   if (t > 0) tr.action.set(ref.subarray((r - 1) * rw + nobs, r * rw));
   const e = await tr.policy(), obs = tr.obs;
   let k = 0;
@@ -65,7 +65,7 @@ console.log(`  excitations: max |js - ref| ${eAbs.toExponential(1)}`);
 console.log('closed loop, every clip from its first frame:');
 let r0 = 0;
 for (const [ci, c] of meta.reference.clips.entries()) {
-  tr.reset(ci);
+  tr.reset(ci, clipFrames[ci]);
   let diverge = -1, maxRoot = 0, maxJoint = 0, failAt = -1, tStep = 0;
   const steps = meta.clips[ci].length - 1;
   for (let t = 0; t < steps; t++) {

@@ -7,7 +7,21 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 THREE.Object3D.DEFAULT_UP.set(0, 0, 1);
 const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const dataUrl = new URL(params.get('data') || 'data/myofullbody/', location.href).href;
+// the exported checkpoints (ms-export-web), the first one by default; ?model= picks one, ?data= points at any export
+const MODELS = [
+  { id: 'mshuman700', name: 'MS-Human-700', data: 'data/mshuman700/' },
+  { id: 'myofullbody', name: 'MyoFullBody', data: 'data/myofullbody/' },
+];
+let model = MODELS.find((x) => x.id === params.get('model')) || MODELS[0];
+const dataUrl = (x) => new URL(params.get('data') || x.data, location.href).href;
+// the clip menu's groups, by the clip's name
+const KINDS = [
+  [/WalkingStraightForward|\/walking_?\d|walking_forward/, 'Walk forward'], [/Backwards/, 'Walk backward'],
+  [/walking_slow/, 'Walk slowly'], [/walking_medium/, 'Walk at a medium pace'], [/walking_fast/, 'Walk fast'], [/walking_run/, 'Run'],
+  [/LeftTurn|turn_left/, 'Turn left'], [/RightTurn|turn_right/, 'Turn right'], [/CounterClockwise/, 'Walk a counter-clockwise circle'],
+  [/Clockwise/, 'Walk a clockwise circle'], [/support|handrail/, 'Walk with a support'],
+];
+const kindOf = (name) => (KINDS.find(([re]) => re.test(name)) || [null, 'Other'])[1];
 
 // ---------------- renderer, studio, camera ----------------
 const renderer = new THREE.WebGLRenderer({ antialias: true, canvas: $('view') });
@@ -57,7 +71,25 @@ resize();
 let body = [], ghost = [], muscles, joints, ghostGroup;
 const m4 = new THREE.Matrix4();
 
+function clearScene() {
+  const geometries = new Set(), materials = new Set();
+  for (const o of [...body, ghostGroup, muscles, joints]) {
+    if (!o) continue;
+    scene.remove(o);
+    o.traverse((x) => {
+      if (x.geometry) geometries.add(x.geometry);
+      if (x.material) materials.add(x.material);
+    });
+  }
+  geometries.forEach((g) => g.dispose());
+  materials.forEach((m) => m.dispose());
+  body = [];
+  ghost = [];
+  muscles = joints = ghostGroup = undefined;
+}
+
 function buildScene(msg) {
+  clearScene();
   const geometries = {};
   for (const [k, mesh] of Object.entries(msg.meshes)) {
     const g = new THREE.BufferGeometry();
@@ -66,7 +98,12 @@ function buildScene(msg) {
     g.computeVertexNormals();
     geometries[k] = g;
   }
-  const boneMat = new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.55, metalness: 0 });
+  // one bone color per body, its most common one (MS-Human-700's tan, MyoFullBody's white)
+  const count = {};
+  for (const g of msg.geoms) if (g.mesh !== undefined) count[g.rgba] = (count[g.rgba] || 0) + 1;
+  const rgba = Object.keys(count).reduce((a, b) => (count[b] > count[a] ? b : a)).split(',').map(Number);
+  const boneMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setRGB(rgba[0], rgba[1], rgba[2], THREE.SRGBColorSpace), roughness: 0.55, metalness: 0 });
   const ghostMat = new THREE.MeshStandardMaterial({ color: 0x5a99ff, transparent: true, opacity: 0.28, depthWrite: false, roughness: 0.8 });
   ghostGroup = new THREE.Group();
   scene.add(ghostGroup);
@@ -153,6 +190,8 @@ const fmt = (frames) => `${(frames / 100).toFixed(1)} s`;
 worker.onmessage = (ev) => {
   const msg = ev.data;
   if (msg.type === 'progress') {
+    $('boot').hidden = false;
+    $('boot').classList.remove('error');
     const pct = Math.floor(100 * msg.frac);
     $('bootMsg').textContent = `${pct} % · ${msg.text}`;
     $('bootBar').firstChild.style.width = `${pct}%`;
@@ -163,8 +202,18 @@ worker.onmessage = (ev) => {
   } else if (msg.type === 'scene') {
     buildScene(msg);
     clips = msg.clips;
-    const sel = $('clip');
-    clips.forEach((c, i) => sel.add(new Option(c.name.replace(/_poses$/, ''), i)));
+    // the clips grouped by kind of motion, in the order of the export
+    const sel = $('clip'), groups = new Map();
+    sel.replaceChildren();
+    clips.forEach((c, i) => {
+      const kind = kindOf(c.name);
+      if (!groups.has(kind)) sel.append(groups.set(kind, Object.assign(document.createElement('optgroup'), { label: kind })).get(kind));
+      groups.get(kind).append(new Option(c.name.replace(/_poses$/, ''), i));
+    });
+    sel.value = String(msg.clip);
+    $('title').textContent = `${model.name}, live in your browser`;
+    $('muscles').textContent = msg.nmuscles;
+    lookInit = false;
     $('boot').hidden = true;
     $('dock').hidden = false;
   } else if (msg.type === 'frame') {
@@ -180,7 +229,16 @@ worker.onmessage = (ev) => {
     $('fail').hidden = !msg.failed;
   }
 };
-worker.postMessage({ type: 'load', data: dataUrl });
+worker.postMessage({ type: 'model', data: dataUrl(model) });
+MODELS.forEach((x) => $('model').add(new Option(x.name, x.id)));
+$('model').value = model.id;
+$('model').onchange = (e) => {
+  model = MODELS.find((x) => x.id === e.target.value);
+  worker.postMessage({ type: 'model', data: dataUrl(model) });
+  const url = new URL(location.href);
+  url.searchParams.set('model', model.id);
+  history.replaceState(null, '', url);
+};
 
 const send = (state) => worker.postMessage({ type: 'set', state });
 $('play').onclick = () => {
@@ -190,7 +248,7 @@ $('play').onclick = () => {
 };
 $('restart').onclick = () => worker.postMessage({ type: 'restart' });
 $('clip').onchange = (e) => {
-  worker.postMessage({ type: 'clip', clip: Number(e.target.value) });
+  worker.postMessage({ type: 'clip', name: clips[Number(e.target.value)].name });
   lookInit = false;
 };
 for (const key of ['policy', 'ghost']) {

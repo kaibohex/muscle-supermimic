@@ -1,5 +1,6 @@
-// Simulation worker: loads the exported checkpoint, runs the Tracker's closed loop at real time, and posts the
-// poses the page draws (bone meshes, muscle paths colored by activation, the reference as a ghost).
+// Simulation worker: loads an exported checkpoint, runs the Tracker's closed loop at real time, and posts the
+// poses the page draws (bone meshes, muscle paths colored by activation, the reference as a ghost). It switches
+// checkpoints (models) and clips on request, between control steps; a clip's frames download when it is chosen.
 
 import loadMujoco from 'https://cdn.jsdelivr.net/npm/@mujoco/mujoco@3.11.0/mujoco.js';
 import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.wasm.min.mjs';
@@ -13,9 +14,11 @@ const DRAW_GROUP = 0; // the bone meshes; collision geoms sit in groups 3 and 4
 const ACT_REST = [0.82, 0.79, 0.78], ACT_RED = [0.72, 0.03, 0.05]; // ms-render's activation colors
 const FAIL_DIST = 1.0; // the task's root-position termination [m]
 
-let tr, mj, dg, geoms, tendons, muscleOf;
+let tr, mj, dg, geoms, tendons, muscleOf, dataUrl;
 const state = { playing: true, policy: true, ghost: true, clip: 0, failed: false, failedAt: 0 };
 let simT = 0, wallT0 = 0, stepMs = 0;
+let pendingModel = null, pendingClip = null; // requests the loop applies between steps
+const clipFrames = new Map(); // clip file URL -> its frames, inflated
 
 const post = (msg, transfer = []) => self.postMessage(msg, transfer);
 
@@ -26,47 +29,72 @@ const WASM = {
 };
 const DOWNLOAD = 0.9; // the share of the progress bar for the downloads; the rest is starting MuJoCo and the policy
 
-async function load(dataUrl) {
-  const meta = await (await fetch(new URL('meta.json', dataUrl))).json();
-  // the files of ms-export-web, the large ones gzipped (a static host serves them as they are), and the binaries; each
-  // counts by its size on the wire, the binaries' decoded bytes scaled down to it
-  const files = Object.fromEntries(Object.entries(meta.files).filter(([k]) => k !== 'meta')
-    .map(([k, name]) => [k, [new URL(name, dataUrl).href, meta.sizes[k], meta.sizes[k]]]));
-  Object.assign(files, WASM);
+/** Fetches files {key: [url, size, size sent]}, reporting the progress; each counts by its size on the wire, the
+ * binaries' decoded bytes scaled down to it. Gzipped files come back inflated. */
+async function download(files) {
   const sent = Object.values(files).reduce((a, f) => a + f[2], 0), got = {};
   const report = () => {
     const mb = Object.entries(got).reduce((a, [k, n]) => a + Math.min(1, n / files[k][1]) * files[k][2], 0);
     post({ type: 'progress', frac: DOWNLOAD * (mb / sent), text: `downloading ${(mb / 1e6).toFixed(0)} / ${(sent / 1e6).toFixed(0)} MB` });
   };
-  const get = async (key) => {
-    const [url] = files[key], r = await fetch(url);
-    if (!r.ok) throw new Error(`${url.split('/').pop()}: HTTP ${r.status}`);
-    const reader = r.body.getReader(), chunks = [];
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      chunks.push(value);
-      got[key] = (got[key] || 0) + value.byteLength;
-      report();
-    }
-    const blob = new Blob(chunks), head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
-    // still gzip unless the host sent it with Content-Encoding: gzip and the browser already inflated it
-    if (head[0] !== 0x1f || head[1] !== 0x8b) return blob.arrayBuffer();
-    return new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
-  };
-  const keys = Object.keys(files), bufs = Object.fromEntries((await Promise.all(keys.map(get))).map((b, i) => [keys[i], b]));
-  post({ type: 'progress', frac: DOWNLOAD, text: 'starting MuJoCo' });
-  mj = await loadMujoco({ wasmBinary: bufs.mujoco });
+  const keys = Object.keys(files);
+  const bufs = await Promise.all(keys.map((k) => fetchFile(files[k][0], (n) => { got[k] = (got[k] || 0) + n; report(); })));
+  return Object.fromEntries(bufs.map((b, i) => [keys[i], b]));
+}
+
+async function fetchFile(url, onBytes = () => {}) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url.split('/').pop()}: HTTP ${r.status}`);
+  const reader = r.body.getReader(), chunks = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    onBytes(value.byteLength);
+  }
+  const blob = new Blob(chunks), head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+  // still gzip unless the host sent it with Content-Encoding: gzip and the browser already inflated it
+  if (head[0] !== 0x1f || head[1] !== 0x8b) return blob.arrayBuffer();
+  return new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+}
+
+/** Loads the checkpoint exported at url (the libraries too, the first time), at the clip of that name if it has one. */
+async function loadModel(url, clipName) {
+  if (tr) {
+    tr.delete();
+    dg.delete();
+    tr = null;
+  }
+  dataUrl = url;
+  post({ type: 'progress', frac: 0, text: 'downloading' });
+  const meta = await (await fetch(new URL('meta.json', url))).json();
+  const clip = Math.max(0, meta.clips.findIndex((c) => c.name === clipName));
+  const files = Object.fromEntries(['model', 'policy', 'init'].map((k) => [k, [new URL(meta.files[k], url).href, meta.sizes[k], meta.sizes[k]]]));
+  const clipUrl = new URL(meta.clips[clip].file, url).href;
+  files.clip = [clipUrl, meta.clips[clip].size, meta.clips[clip].size];
+  if (!mj) Object.assign(files, WASM);
+  const bufs = await download(files);
+  if (!mj) {
+    post({ type: 'progress', frac: DOWNLOAD, text: 'starting MuJoCo' });
+    mj = await loadMujoco({ wasmBinary: bufs.mujoco });
+    ort.env.wasm.wasmBinary = bufs.ort;
+  }
   post({ type: 'progress', frac: DOWNLOAD + 0.04, text: 'loading the model and the policy' });
-  ort.env.wasm.wasmBinary = bufs.ort;
-  const { model, policy, frames, init } = bufs;
-  tr = await Tracker.create(mj, ort, { meta, model: new Uint8Array(model), policy: new Uint8Array(policy), frames, init });
+  tr = await Tracker.create(mj, ort, { meta, model: new Uint8Array(bufs.model), policy: new Uint8Array(bufs.policy), init: bufs.init });
   dg = new mj.MjData(tr.m);
+  clipFrames.set(clipUrl, bufs.clip);
   const { transfer, ...scene } = sceneDescription();
-  post({ type: 'scene', ...scene, clips: meta.clips.map((c) => ({ name: c.name, length: c.length })) }, transfer);
-  reset(0);
-  wallT0 = performance.now();
-  tick();
+  post({ type: 'scene', ...scene, nmuscles: meta.nmuscles, clip, clips: meta.clips.map((c) => ({ name: c.name, length: c.length })) }, transfer);
+  reset(clip, bufs.clip);
+}
+
+/** Switches to the clip of that name, downloading its frames the first time. */
+async function loadClip(name) {
+  const clip = tr.meta.clips.findIndex((c) => c.name === name);
+  if (clip < 0) return;
+  const url = new URL(tr.meta.clips[clip].file, dataUrl).href;
+  if (!clipFrames.has(url)) clipFrames.set(url, await fetchFile(url));
+  reset(clip, clipFrames.get(url));
 }
 
 /** Static geometry: the drawn geoms with their meshes and colors, and the tendons. */
@@ -99,8 +127,8 @@ function sceneDescription() {
   return { geoms, meshes, maxSegments: 2 * m.nwrap, transfer };
 }
 
-function reset(clip) {
-  tr.reset(clip);
+function reset(clip, frames) {
+  tr.reset(clip, frames);
   state.clip = clip;
   state.failed = false;
   simT = 0;
@@ -145,6 +173,24 @@ function ghostPoses() {
 }
 
 async function tick() {
+  try {
+    if (pendingModel) {
+      const url = pendingModel, name = pendingClip || (tr && tr.meta.clips[state.clip].name);
+      pendingModel = pendingClip = null;
+      await loadModel(url, name);
+    } else if (pendingClip && tr) {
+      const name = pendingClip;
+      pendingClip = null;
+      await loadClip(name);
+    }
+  } catch (e) {
+    post({ type: 'error', text: String((e && e.message) || e) });
+  }
+  if (tr) await step();
+  setTimeout(tick, 4);
+}
+
+async function step() {
   const dt = tr.meta.timestep * tr.meta.decimation;
   if (state.playing) {
     const target = (performance.now() - wallT0) / 1000;
@@ -172,21 +218,24 @@ async function tick() {
   const body = poses(tr.d), seg = segments(tr.d), ghost = state.ghost ? ghostPoses() : null;
   const c = tr.meta.clips[state.clip];
   const root = tr.meta.free_q.slice(0, 3).map((a) => tr.d.qpos[a]);
-  post({ type: 'frame', body, ghost, seg, root, grab: tr.grabbed ? [...tr.grabPoint(), ...tr.grabbed.target] : null, frame: tr.f - c.start, length: c.length, stepMs, failed: state.failed, playing: state.playing },
+  post({ type: 'frame', body, ghost, seg, root, grab: tr.grabbed ? [...tr.grabPoint(), ...tr.grabbed.target] : null, frame: tr.f, length: c.length, stepMs, failed: state.failed, playing: state.playing },
     [body.xpos.buffer, body.xmat.buffer, seg.buffer, ...(ghost ? [ghost.xpos.buffer, ghost.xmat.buffer] : [])]);
-  setTimeout(tick, 4);
 }
 
 self.onmessage = (ev) => {
   const msg = ev.data;
-  if (msg.type === 'load') load(msg.data).catch((e) => post({ type: 'error', text: String(e && e.message || e) }));
-  else if (msg.type === 'clip') reset(msg.clip);
+  if (msg.type === 'model') { // a checkpoint's data URL, and optionally the clip to start at
+    pendingModel = msg.data;
+    if (msg.clip) pendingClip = msg.clip;
+  } else if (msg.type === 'clip') pendingClip = msg.name;
+  else if (msg.type === 'set') {
+    Object.assign(state, msg.state);
+    if ('playing' in msg.state && msg.state.playing) wallT0 = performance.now() - simT * 1000;
+  } else if (!tr) return;
   else if (msg.type === 'restart') reset(state.clip);
   else if (msg.type === 'grab') tr.grab(tr.m.geom_bodyid[msg.geom], msg.point);
   else if (msg.type === 'drag') tr.drag(msg.target);
   else if (msg.type === 'release') tr.release();
-  else if (msg.type === 'set') {
-    Object.assign(state, msg.state);
-    if ('playing' in msg.state && msg.state.playing) wallT0 = performance.now() - simT * 1000;
-  }
 };
+
+tick();

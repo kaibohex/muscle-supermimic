@@ -1,11 +1,34 @@
-# The browser demo's clips: one held-out clip per kind of motion from kit_kinesis_test.txt (none is in training).
-MyoFullBody/gmr/KIT/11/WalkingStraightForwards07_poses.npz
+# The browser demo's clips: per kind of motion, the first 3 held-out clips of kit_kinesis_test.txt (none is in
+# training) that both models' checkpoints track to the end under native MuJoCo (ms-export-web --reference).
+MyoFullBody/gmr/KIT/11/WalkingStraightForwards09_poses.npz
+MyoFullBody/gmr/KIT/4/WalkingStraightForward02_poses.npz
+MyoFullBody/gmr/KIT/12/WalkingStraightForwards01_1_poses.npz
+MyoFullBody/gmr/KIT/6/WalkingStraightBackwards02_poses.npz
 MyoFullBody/gmr/KIT/12/WalkingStraightBackwards04_poses.npz
-MyoFullBody/gmr/KIT/183/walking_slow03_poses.npz
+MyoFullBody/gmr/KIT/6/WalkingStraightBackwards09_poses.npz
+MyoFullBody/gmr/KIT/314/walking_slow05_poses.npz
+MyoFullBody/gmr/KIT/424/walking_slow08_poses.npz
+MyoFullBody/gmr/KIT/314/walking_slow09_poses.npz
+MyoFullBody/gmr/KIT/317/walking_medium08_poses.npz
+MyoFullBody/gmr/KIT/425/walking_medium01_poses.npz
+MyoFullBody/gmr/KIT/167/walking_medium06_poses.npz
+MyoFullBody/gmr/KIT/183/walking_fast04_poses.npz
 MyoFullBody/gmr/KIT/317/walking_fast02_poses.npz
+MyoFullBody/gmr/KIT/317/walking_fast10_poses.npz
 MyoFullBody/gmr/KIT/348/walking_run06_poses.npz
+MyoFullBody/gmr/KIT/348/walking_run02_poses.npz
+MyoFullBody/gmr/KIT/348/walking_run07_poses.npz
+MyoFullBody/gmr/KIT/317/turn_left03_poses.npz
+MyoFullBody/gmr/KIT/10/LeftTurn09_poses.npz
 MyoFullBody/gmr/KIT/9/LeftTurn03_poses.npz
 MyoFullBody/gmr/KIT/7/RightTurn03_poses.npz
-MyoFullBody/gmr/KIT/6/WalkInClockwiseCircle07_1_poses.npz
+MyoFullBody/gmr/KIT/6/RightTurn10_1_poses.npz
+MyoFullBody/gmr/KIT/317/turn_right09_poses.npz
+MyoFullBody/gmr/KIT/4/WalkInCounterClockwiseCircle04_poses.npz
+MyoFullBody/gmr/KIT/7/WalkInCounterClockwiseCircle01_poses.npz
 MyoFullBody/gmr/KIT/4/WalkInCounterClockwiseCircle08_poses.npz
+MyoFullBody/gmr/KIT/6/WalkInClockwiseCircle07_1_poses.npz
+MyoFullBody/gmr/KIT/7/WalkInClockwiseCircle07_poses.npz
+MyoFullBody/gmr/KIT/4/WalkInClockwiseCircle01_poses.npz
 MyoFullBody/gmr/KIT/3/walk_with_support04_poses.npz
+MyoFullBody/gmr/KIT/675/walk_with_handrail_beam_right03_poses.npz

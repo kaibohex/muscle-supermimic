@@ -8,10 +8,11 @@ script writes what that needs, the large files gzipped for the page to download:
   model.mjb.gz    the task's scene model with its solver settings, as the simulator runs it
   policy.onnx.gz  the decoder: (z, obs) -> excitations, with the observation normalization and the sigmoid; its
                   weight matrices are stored in float16 (and cast back on load) unless ``--fp32``
-  frames.bin.gz   per frame of every clip, float32: the latent z, then the reference qpos (root + every joint)
+  clips/<k>.bin.gz  per frame of clip k, float32: the latent z, then the reference qpos (root + every joint); one
+                  file per clip, so the page downloads a clip when it is chosen
   init.bin        per clip, float64: the qpos and qvel a reset writes at the clip's first frame
-  meta.json       addresses, coupled-joint polynomials, tracked bodies, observation layout, the clip table and
-                  the file names above
+  meta.json       addresses, coupled-joint polynomials, tracked bodies, observation layout, the clip table (with
+                  each clip's file) and the file names above
 
 With ``--reference``, every clip also plays from its first frame under native MuJoCo (the C library the
 WebAssembly build compiles), with the task's own observation code and the torch policy, as ``ms-eval`` plays
@@ -24,6 +25,8 @@ of its states equals the env's.
 
   uv run ms-export-web --task Mjlab-SuperMimic-Flat-MyoFullBody --checkpoint <model.pt> \
       --motion-file data/musclemimic/demo_clips.txt --out docs/website/demo/data/myofullbody
+  MS_HUMAN_700_ROOT=<MS-Human-700> uv run ms-export-web --task Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands \
+      --checkpoint <model.pt> --motion-file data/mshuman700_kit/demo_clips.txt --out docs/website/demo/data/mshuman700
 """
 
 from __future__ import annotations
@@ -162,7 +165,14 @@ def export(env, runner, out: str, fp16: bool = True) -> dict:
         z = torch.tanh(pi.enc(pi.goal_norm(cmd.heads.goal(StepCtx((), f)))))
     ref_q, _ = kin.full_joint_state(mo.q, mo.qd)
     ref_qpos = torch.cat((mo.root_p, mat_to_quat(mo.root_R @ kin.R_off.T), ref_q), -1)
-    np.concatenate((z.numpy(), ref_qpos.numpy()), 1).astype("<f4").tofile(os.path.join(out, "frames.bin"))
+    frames = np.concatenate((z.numpy(), ref_qpos.numpy()), 1).astype("<f4")
+    shutil.rmtree(os.path.join(out, "clips"), ignore_errors=True)
+    os.makedirs(os.path.join(out, "clips"))
+    clips = []
+    for k, (name, s, n) in enumerate(zip(mo.names, mo.clip_start.tolist(), mo.clip_len.tolist())):
+        frames[s : s + n].tofile(os.path.join(out, "clips", f"{k}.bin"))
+        f = "clips/" + gzip_file(os.path.join(out, "clips", f"{k}.bin"))
+        clips.append({"name": name, "start": int(s), "length": int(n), "file": f, "size": os.path.getsize(os.path.join(out, f))})
 
     # per clip: the reset state the env writes at the clip's first frame (one env per clip)
     C = len(mo.names)
@@ -186,9 +196,10 @@ def export(env, runner, out: str, fp16: bool = True) -> dict:
         "touch_adr": [int(m.sensor(f"{cmd.cfg.touch_sensor_name}_{b}_force").adr[0]) + 2 for b in cmd.touch_sensor.primary_names],
         "obs_terms": [[n, d[0]] for n, d in zip(u.observation_manager.active_terms["policy"], u.observation_manager.group_obs_term_dim["policy"])],
         "nz": nz, "nobs": nobs, "frame_width": nz + ref_qpos.shape[1],
-        "clips": [{"name": n, "start": int(s), "length": int(k)} for n, s, k in zip(mo.names, mo.clip_start.tolist(), mo.clip_len.tolist())],
+        "nmuscles": int(len(robot.ctrl_ids)),
+        "clips": clips,  # start: the clip's first frame in the task's motion (the reference's frame index)
         "files": {"model": gzip_file(os.path.join(out, "model.mjb")), "policy": gzip_file(os.path.join(out, "policy.onnx")),
-                  "frames": gzip_file(os.path.join(out, "frames.bin")), "init": "init.bin"},
+                  "init": "init.bin"},
     }  # fmt: skip
     meta["sizes"] = {k: os.path.getsize(os.path.join(out, f)) for k, f in meta["files"].items()}
     json.dump(meta, open(os.path.join(out, "meta.json"), "w"), indent=1)

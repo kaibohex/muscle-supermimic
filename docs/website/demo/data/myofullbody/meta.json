@@ -1666,68 +1666,241 @@
  "nz": 32,
  "nobs": 2141,
  "frame_width": 121,
+ "nmuscles": 354,
  "clips": [
   {
-   "name": "11/WalkingStraightForwards07_poses",
+   "name": "11/WalkingStraightForwards09_poses",
    "start": 0,
-   "length": 477
+   "length": 427,
+   "file": "clips/0.bin.gz",
+   "size": 182223
+  },
+  {
+   "name": "4/WalkingStraightForward02_poses",
+   "start": 427,
+   "length": 525,
+   "file": "clips/1.bin.gz",
+   "size": 221304
+  },
+  {
+   "name": "12/WalkingStraightForwards01_1_poses",
+   "start": 952,
+   "length": 392,
+   "file": "clips/2.bin.gz",
+   "size": 166942
+  },
+  {
+   "name": "6/WalkingStraightBackwards02_poses",
+   "start": 1344,
+   "length": 493,
+   "file": "clips/3.bin.gz",
+   "size": 207965
   },
   {
    "name": "12/WalkingStraightBackwards04_poses",
-   "start": 477,
-   "length": 604
+   "start": 1837,
+   "length": 604,
+   "file": "clips/4.bin.gz",
+   "size": 257148
   },
   {
-   "name": "183/walking_slow03_poses",
-   "start": 1081,
-   "length": 717
+   "name": "6/WalkingStraightBackwards09_poses",
+   "start": 2441,
+   "length": 504,
+   "file": "clips/5.bin.gz",
+   "size": 213452
+  },
+  {
+   "name": "314/walking_slow05_poses",
+   "start": 2945,
+   "length": 718,
+   "file": "clips/6.bin.gz",
+   "size": 305395
+  },
+  {
+   "name": "424/walking_slow08_poses",
+   "start": 3663,
+   "length": 852,
+   "file": "clips/7.bin.gz",
+   "size": 357906
+  },
+  {
+   "name": "314/walking_slow09_poses",
+   "start": 4515,
+   "length": 706,
+   "file": "clips/8.bin.gz",
+   "size": 295836
+  },
+  {
+   "name": "317/walking_medium08_poses",
+   "start": 5221,
+   "length": 456,
+   "file": "clips/9.bin.gz",
+   "size": 192984
+  },
+  {
+   "name": "425/walking_medium01_poses",
+   "start": 5677,
+   "length": 463,
+   "file": "clips/10.bin.gz",
+   "size": 197099
+  },
+  {
+   "name": "167/walking_medium06_poses",
+   "start": 6140,
+   "length": 484,
+   "file": "clips/11.bin.gz",
+   "size": 203918
+  },
+  {
+   "name": "183/walking_fast04_poses",
+   "start": 6624,
+   "length": 494,
+   "file": "clips/12.bin.gz",
+   "size": 209994
   },
   {
    "name": "317/walking_fast02_poses",
-   "start": 1798,
-   "length": 481
+   "start": 7118,
+   "length": 481,
+   "file": "clips/13.bin.gz",
+   "size": 200041
+  },
+  {
+   "name": "317/walking_fast10_poses",
+   "start": 7599,
+   "length": 471,
+   "file": "clips/14.bin.gz",
+   "size": 195336
   },
   {
    "name": "348/walking_run06_poses",
-   "start": 2279,
-   "length": 419
+   "start": 8070,
+   "length": 419,
+   "file": "clips/15.bin.gz",
+   "size": 178917
+  },
+  {
+   "name": "348/walking_run02_poses",
+   "start": 8489,
+   "length": 429,
+   "file": "clips/16.bin.gz",
+   "size": 182688
+  },
+  {
+   "name": "348/walking_run07_poses",
+   "start": 8918,
+   "length": 447,
+   "file": "clips/17.bin.gz",
+   "size": 190749
+  },
+  {
+   "name": "317/turn_left03_poses",
+   "start": 9365,
+   "length": 511,
+   "file": "clips/18.bin.gz",
+   "size": 215805
+  },
+  {
+   "name": "10/LeftTurn09_poses",
+   "start": 9876,
+   "length": 450,
+   "file": "clips/19.bin.gz",
+   "size": 191180
   },
   {
    "name": "9/LeftTurn03_poses",
-   "start": 2698,
-   "length": 487
+   "start": 10326,
+   "length": 487,
+   "file": "clips/20.bin.gz",
+   "size": 205811
   },
   {
    "name": "7/RightTurn03_poses",
-   "start": 3185,
-   "length": 551
+   "start": 10813,
+   "length": 551,
+   "file": "clips/21.bin.gz",
+   "size": 229952
   },
   {
-   "name": "6/WalkInClockwiseCircle07_1_poses",
-   "start": 3736,
-   "length": 712
+   "name": "6/RightTurn10_1_poses",
+   "start": 11364,
+   "length": 514,
+   "file": "clips/22.bin.gz",
+   "size": 219176
+  },
+  {
+   "name": "317/turn_right09_poses",
+   "start": 11878,
+   "length": 560,
+   "file": "clips/23.bin.gz",
+   "size": 235758
+  },
+  {
+   "name": "4/WalkInCounterClockwiseCircle04_poses",
+   "start": 12438,
+   "length": 840,
+   "file": "clips/24.bin.gz",
+   "size": 353669
+  },
+  {
+   "name": "7/WalkInCounterClockwiseCircle01_poses",
+   "start": 13278,
+   "length": 744,
+   "file": "clips/25.bin.gz",
+   "size": 316842
   },
   {
    "name": "4/WalkInCounterClockwiseCircle08_poses",
-   "start": 4448,
-   "length": 854
+   "start": 14022,
+   "length": 854,
+   "file": "clips/26.bin.gz",
+   "size": 358914
+  },
+  {
+   "name": "6/WalkInClockwiseCircle07_1_poses",
+   "start": 14876,
+   "length": 712,
+   "file": "clips/27.bin.gz",
+   "size": 303573
+  },
+  {
+   "name": "7/WalkInClockwiseCircle07_poses",
+   "start": 15588,
+   "length": 736,
+   "file": "clips/28.bin.gz",
+   "size": 310490
+  },
+  {
+   "name": "4/WalkInClockwiseCircle01_poses",
+   "start": 16324,
+   "length": 627,
+   "file": "clips/29.bin.gz",
+   "size": 266368
   },
   {
    "name": "3/walk_with_support04_poses",
-   "start": 5302,
-   "length": 668
+   "start": 16951,
+   "length": 668,
+   "file": "clips/30.bin.gz",
+   "size": 283923
+  },
+  {
+   "name": "675/walk_with_handrail_beam_right03_poses",
+   "start": 17619,
+   "length": 531,
+   "file": "clips/31.bin.gz",
+   "size": 222735
   }
  ],
  "files": {
   "model": "model.mjb.gz",
   "policy": "policy.onnx.gz",
-  "frames": "frames.bin.gz",
   "init": "init.bin"
  },
  "sizes": {
   "model": 27117335,
   "policy": 13546387,
-  "frames": 2526578,
-  "init": 14160
+  "init": 45312
  }
 }

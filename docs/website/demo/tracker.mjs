@@ -7,7 +7,8 @@
 // exactly on their <equality> polynomials of the independent joints; here a second MjData holds that state and
 // MuJoCo itself evaluates it. Everything else (rotations, root-relative site quantities) is ported line by line.
 //
-// Files are those of `ms-export-web` (meta.json and the files it names), passed in inflated.
+// Files are those of `ms-export-web` (meta.json and the files it names), passed in inflated; a clip's frames come
+// with reset(), as the page downloads a clip when it is chosen.
 
 const mjOBJ_BODY = 1;
 
@@ -15,7 +16,7 @@ export class Tracker {
   /**
    * @param mj the loaded @mujoco/mujoco module
    * @param ort onnxruntime-web
-   * @param files {meta, model: Uint8Array, policy: Uint8Array, frames: ArrayBuffer, init: ArrayBuffer}
+   * @param files {meta, model: Uint8Array, policy: Uint8Array, init: ArrayBuffer}
    */
   static async create(mj, ort, files) {
     // MjVFS.addBuffer copies element by element (tens of seconds for a model); Emscripten's FS takes the bytes at once
@@ -33,7 +34,7 @@ export class Tracker {
     Object.assign(this, { mj, ort, m, session, meta });
     this.d = new mj.MjData(m); // the simulated state
     this.di = new mj.MjData(m); // the idealized state the observation is evaluated on
-    this.frames = new Float32Array(files.frames);
+    this.frames = null; // the current clip's frames: [z, reference qpos] each
     this.init = new Float64Array(files.init);
     this.nIndep = meta.q_adr.length;
     this.ncoupled = meta.coupled.src.length;
@@ -53,7 +54,7 @@ export class Tracker {
     this.grabbed = null; // {body, local: the point in the body frame, target: world} while the user pulls the body
   }
 
-  /** The reference frame's root + joint qpos (for a ghost or the camera). */
+  /** The reference frame's root + joint qpos (for a ghost or the camera); f counts from the clip's first frame. */
   referenceQpos(f = this.f) {
     const w = this.meta.frame_width, nz = this.meta.nz;
     return this.frames.subarray(f * w + nz, (f + 1) * w);
@@ -61,12 +62,14 @@ export class Tracker {
 
   /** Last frame of the current clip: the episode ends when the step would pass it. */
   get clipEnd() {
-    const c = this.meta.clips[this.clip];
-    return c.start + c.length - 1;
+    return this.meta.clips[this.clip].length - 1;
   }
 
-  /** The env's reset at a clip's first frame: the reference state, zero activation, zero previous action. */
-  reset(clip) {
+  /** The env's reset at a clip's first frame: the reference state, zero activation, zero previous action. The
+   * clip's frames (its file of `ms-export-web`, inflated) are needed when it changes. */
+  reset(clip, frames) {
+    if (frames) this.frames = new Float32Array(frames);
+    else if (clip !== this.clip || !this.frames) throw new Error(`clip ${clip}: no frames`);
     const { mj, m, d, meta } = this;
     mj.mj_resetData(m, d); // clears xfrc_applied; a grab in progress keeps pulling from the next step
     const w = meta.nq + meta.nv, row = this.init.subarray(clip * w, (clip + 1) * w);
@@ -76,7 +79,7 @@ export class Tracker {
     mj.mj_forward(m, d);
     this.action.fill(0);
     this.clip = clip;
-    this.f = meta.clips[clip].start;
+    this.f = 0;
   }
 
   /** The decoder observation of the current state (heads.py's terms, in the env's order). */
@@ -241,6 +244,7 @@ export class Tracker {
   }
 
   delete() {
+    this.session.release();
     this.d.delete();
     this.di.delete();
     this.m.delete();
