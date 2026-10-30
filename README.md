@@ -35,6 +35,9 @@ Both bodies train on MuscleMimic's KIT split (972 training clips) with the defau
 - **MyoFullBody**: 0.83 after 6.0 hours (iteration 10000, 101 tracked) and 0.90 after 9.6 hours (iteration 16000,
   all 108 tracked).
 
+The checkpoints of iterations 10000 and 16000 of both runs are on Hugging Face:
+[Beanpow/muscle-supermimic](https://huggingface.co/Beanpow/muscle-supermimic).
+
 ## Install
 
 ```bash
