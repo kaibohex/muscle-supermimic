@@ -289,7 +289,7 @@ function lazyVideos() {
   vids.forEach((v) => io.observe(v));
 }
 
-// ── The live viewer: loaded on request (a 42 MB download), paused while out of sight ──
+// ── The live viewer: loaded on request (a 48 MB download), paused while out of sight ──
 function liveViewer() {
   const start = document.querySelector('.live-start');
   if (!start) return;

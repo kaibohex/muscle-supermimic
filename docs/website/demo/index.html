@@ -50,6 +50,9 @@
     #boot .glass { padding: 16px 20px; min-width: 240px; text-align: center; }
     #boot.error #bootMsg { color: var(--accent); }
     #bootMsg { font: 12px/1.4 var(--mono); color: var(--ink2); margin-top: 6px; }
+    #bootBar { height: 4px; margin-top: 10px; border-radius: 2px; background: rgba(0, 0, 0, 0.08); overflow: hidden; }
+    #bootBar i { display: block; height: 100%; width: 0; background: var(--ink); transition: width 0.2s; }
+    #boot.error #bootBar { display: none; }
     @media (max-width: 560px) { #head p.more { display: none; } #cost { display: none; } }
     /* embedded in the project page (?embed): the page explains it, so only the controls until full screen */
     .embed:not(.fs) #head { display: none; }
@@ -74,7 +77,7 @@
       non-commercial use only) · KIT motions retargeted by MuscleMimic</details>
   </div>
   <div id="fail" class="glass" hidden>Lost the reference, restarting</div>
-  <div id="boot"><div class="glass"><strong>Loading the demo</strong><div id="bootMsg">starting</div></div></div>
+  <div id="boot"><div class="glass"><strong>Loading the demo</strong><div id="bootBar"><i></i></div><div id="bootMsg">starting</div></div></div>
   <div id="dock" class="glass" hidden>
     <div class="row">
       <button id="play" type="button">Pause</button>

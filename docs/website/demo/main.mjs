@@ -152,7 +152,11 @@ const fmt = (frames) => `${(frames / 100).toFixed(1)} s`;
 
 worker.onmessage = (ev) => {
   const msg = ev.data;
-  if (msg.type === 'progress') $('bootMsg').textContent = msg.text;
+  if (msg.type === 'progress') {
+    const pct = Math.floor(100 * msg.frac);
+    $('bootMsg').textContent = `${pct} % · ${msg.text}`;
+    $('bootBar').firstChild.style.width = `${pct}%`;
+  }
   else if (msg.type === 'error') {
     $('bootMsg').textContent = msg.text;
     $('boot').classList.add('error');

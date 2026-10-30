@@ -5,8 +5,9 @@ import loadMujoco from 'https://cdn.jsdelivr.net/npm/@mujoco/mujoco@3.11.0/mujoc
 import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.wasm.min.mjs';
 import { Tracker } from './tracker.mjs';
 
+const MUJOCO = 'https://cdn.jsdelivr.net/npm/@mujoco/mujoco@3.11.0/', ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
 ort.env.wasm.numThreads = 1; // a static host cannot send the cross-origin isolation headers threads need
-ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
+ort.env.wasm.wasmPaths = ORT; // its JavaScript glue; the binary is passed in
 
 const DRAW_GROUP = 0; // the bone meshes; collision geoms sit in groups 3 and 4
 const ACT_REST = [0.82, 0.79, 0.78], ACT_RED = [0.72, 0.03, 0.05]; // ms-render's activation colors
@@ -18,30 +19,47 @@ let simT = 0, wallT0 = 0, stepMs = 0;
 
 const post = (msg, transfer = []) => self.postMessage(msg, transfer);
 
+// The two WebAssembly binaries, fetched here to count them in the progress: [url, size, size sent (brotli)]
+const WASM = {
+  mujoco: [`${MUJOCO}mujoco.wasm`, 10117577, 2099961],
+  ort: [`${ORT}ort-wasm-simd-threaded.wasm`, 11246032, 2493249],
+};
+const DOWNLOAD = 0.9; // the share of the progress bar for the downloads; the rest is starting MuJoCo and the policy
+
 async function load(dataUrl) {
   const meta = await (await fetch(new URL('meta.json', dataUrl))).json();
-  // the files of ms-export-web, the large ones gzipped (a static host serves them as they are)
-  const total = Object.values(meta.sizes).reduce((a, b) => a + b, 0), got = {};
+  // the files of ms-export-web, the large ones gzipped (a static host serves them as they are), and the binaries; each
+  // counts by its size on the wire, the binaries' decoded bytes scaled down to it
+  const files = Object.fromEntries(Object.entries(meta.files).filter(([k]) => k !== 'meta')
+    .map(([k, name]) => [k, [new URL(name, dataUrl).href, meta.sizes[k], meta.sizes[k]]]));
+  Object.assign(files, WASM);
+  const sent = Object.values(files).reduce((a, f) => a + f[2], 0), got = {};
+  const report = () => {
+    const mb = Object.entries(got).reduce((a, [k, n]) => a + Math.min(1, n / files[k][1]) * files[k][2], 0);
+    post({ type: 'progress', frac: DOWNLOAD * (mb / sent), text: `downloading ${(mb / 1e6).toFixed(0)} / ${(sent / 1e6).toFixed(0)} MB` });
+  };
   const get = async (key) => {
-    const name = meta.files[key], r = await fetch(new URL(name, dataUrl));
-    if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
+    const [url] = files[key], r = await fetch(url);
+    if (!r.ok) throw new Error(`${url.split('/').pop()}: HTTP ${r.status}`);
     const reader = r.body.getReader(), chunks = [];
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       chunks.push(value);
       got[key] = (got[key] || 0) + value.byteLength;
-      const mb = Object.values(got).reduce((a, b) => a + b, 0) / 1e6;
-      post({ type: 'progress', text: `downloading ${mb.toFixed(0)} / ${(total / 1e6).toFixed(0)} MB` });
+      report();
     }
     const blob = new Blob(chunks), head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
     // still gzip unless the host sent it with Content-Encoding: gzip and the browser already inflated it
     if (head[0] !== 0x1f || head[1] !== 0x8b) return blob.arrayBuffer();
     return new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
   };
-  const [model, policy, frames, init] = await Promise.all(['model', 'policy', 'frames', 'init'].map(get));
-  post({ type: 'progress', text: 'starting MuJoCo' });
-  mj = await loadMujoco();
+  const keys = Object.keys(files), bufs = Object.fromEntries((await Promise.all(keys.map(get))).map((b, i) => [keys[i], b]));
+  post({ type: 'progress', frac: DOWNLOAD, text: 'starting MuJoCo' });
+  mj = await loadMujoco({ wasmBinary: bufs.mujoco });
+  post({ type: 'progress', frac: DOWNLOAD + 0.04, text: 'loading the model and the policy' });
+  ort.env.wasm.wasmBinary = bufs.ort;
+  const { model, policy, frames, init } = bufs;
   tr = await Tracker.create(mj, ort, { meta, model: new Uint8Array(model), policy: new Uint8Array(policy), frames, init });
   dg = new mj.MjData(tr.m);
   const { transfer, ...scene } = sceneDescription();
