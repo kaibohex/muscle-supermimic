@@ -4,9 +4,6 @@
 [SuperMimic](https://arxiv.org/abs/2610.28480) driving MS-Human-700 (700 muscles) and MyoFullBody (354
 muscles), on [mjlab](https://github.com/mujocolab/mjlab) / MuJoCo-Warp.
 
-> This project is under active development: its results keep improving, and the code, the technical report and
-> the checkpoints are updated along with them.
-
 <p align="center">
   <img src="docs/assets/teaser_three.gif" width="840" alt="MS-Human-700 and MyoFullBody side by side tracking three clips: turning left, walking forward, walking backward">
   <br><sub>Three KIT training clips (turning left, walking forward, walking backward), each tracked by MS-Human-700
@@ -34,8 +31,9 @@ Both bodies train on MuscleMimic's KIT split (972 training clips) with the defau
 
 - **MS-Human-700** (locked hands, the clips retargeted to it): a normalized return of 0.83 after 4 hours
   (iteration 6500, 99 of 108 clips tracked to the end), 0.89-0.91 from 4.9 hours on, and 0.91 after 10.1 hours
-  (iteration 16000, 104 tracked); iterations 10000, 14000, 14500 and 15500 track all 108. Still training.
-- **MyoFullBody**: 0.83 after 6.0 hours (iteration 10000, 101 tracked). Still training.
+  (iteration 16000, 104 tracked); iterations 10000, 14000, 14500 and 15500 track all 108.
+- **MyoFullBody**: 0.83 after 6.0 hours (iteration 10000, 101 tracked) and 0.90 after 9.6 hours (iteration 16000,
+  all 108 tracked).
 
 ## Install
 

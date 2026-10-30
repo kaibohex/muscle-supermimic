@@ -289,4 +289,24 @@ function lazyVideos() {
   vids.forEach((v) => io.observe(v));
 }
 
-document.addEventListener('DOMContentLoaded', () => { charts(); gallery(); lazyVideos(); });
+// ── The live viewer: loaded on request (a 66 MB download for MS-Human-700), paused while out of sight ──
+function liveViewer() {
+  const start = document.querySelector('.live-start');
+  if (!start) return;
+  start.addEventListener('click', () => {
+    const frame = document.createElement('iframe');
+    frame.src = start.dataset.src;
+    frame.title = 'A musculoskeletal body tracking a held-out clip, simulated live';
+    frame.allow = 'fullscreen';
+    frame.allowFullscreen = true;
+    start.replaceWith(frame);
+    let visible = true;
+    const tell = () => frame.contentWindow?.postMessage({ type: 'visible', visible }, location.origin);
+    frame.addEventListener('load', tell);
+    new IntersectionObserver((entries) => {
+      for (const e of entries) { visible = e.isIntersecting; tell(); }
+    }, { threshold: 0.1 }).observe(frame);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => { charts(); gallery(); lazyVideos(); liveViewer(); });

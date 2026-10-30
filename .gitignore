@@ -1,15 +1,19 @@
 # python / tooling
+node_modules/
 __pycache__/
 *.pyc
 *.egg-info/
 .venv/
 .pytest_cache/
 .ruff_cache/
-# motion data (fetched / converted locally) and training runs; MuscleMimic's clip lists stay tracked
+# motion data (fetched / converted locally) and training runs; MuscleMimic's clip lists and the demo's MS-Human-700 list stay tracked
 data/*
 !data/musclemimic/
 data/musclemimic/*
 !data/musclemimic/*.txt
+!data/mshuman700_kit/
+data/mshuman700_kit/*
+!data/mshuman700_kit/demo_clips.txt
 logs/
 *.pt
 *.npz
