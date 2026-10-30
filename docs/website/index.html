@@ -62,7 +62,8 @@
       reward and termination is one analytic function, evaluated by the simulator and on imagined states alike, with a torch replica
       of MuJoCo's muscles in it. On MS-Human-700, one run on one GPU reaches a normalized return of 0.83 on MuscleMimic's 108
       held-out clips in 4 hours (iteration 6500), 99 of them tracked to the end, and 0.89–0.91 from 4.9 hours on; MyoFullBody,
-      with the same code, reaches 0.83 after 6 hours (iteration 10000), 101 tracked. Both are still training.</p>
+      with the same code, reaches 0.83 after 6 hours (iteration 10000), 101 tracked, and 0.90 after 9.6 hours (iteration
+      16000), all 108 tracked.</p>
   </div>
 </section>
 
@@ -171,7 +172,7 @@
     <h2>MS-Human-700</h2>
     <p>One run of MS-Human-700 with locked hands (694 muscles) on MuscleMimic's KIT split, 972 training clips (1.5 h of
       motion) retargeted to it, 4096 parallel environments, MuscleMimic's solver settings (Euler, 100 / 50 iterations), on one
-      RTX 5090. The run is still training; this is a snapshot at iteration 16800 (10.6 hours), with every
+      RTX 5090. This is a snapshot at iteration 16800 (10.6 hours), with every
       checkpoint up to iteration 16000 evaluated.</p>
     <div class="stats">
       <div class="stat"><div class="stat-label">Training episode length, iterations 16100–16800</div><div class="stat-value">264<small>steps (2.6 s)</small></div></div>
@@ -209,9 +210,9 @@
   <div class="container medium">
     <h2>MyoFullBody</h2>
     <p>One run on the same 972 training clips, as MuscleMimic retargeted them to MyoFullBody, with MS-Human-700's settings, on
-      one RTX 5090. The run is still training; the curves below are a snapshot at
-      iteration 10900 (6.5 hours), and its checkpoint of iteration 10000 scores 0.83 on the 108 held-out clips, 101 of them
-      tracked to the end.</p>
+      one RTX 5090. The curves below run to iteration 16800 (10.1 hours), with every checkpoint up to iteration 16000
+      evaluated. The checkpoint of iteration 16000 (9.6 hours) scores 0.90 on the 108 held-out clips, all of them tracked to
+      the end; the one of iteration 10000, shown below, scores 0.83, 101 tracked.</p>
     <div class="two-col" style="margin-top: 1.2rem;">
       <div class="chart" id="chart-eplen">
         <div class="chart-title">Mean training episode length</div>
