@@ -4,9 +4,6 @@
 [SuperMimic](https://arxiv.org/abs/2610.28480) driving MS-Human-700 (700 muscles) and MyoFullBody (354
 muscles), on [mjlab](https://github.com/mujocolab/mjlab) / MuJoCo-Warp.
 
-> This project is under active development: its results keep improving, and the code, the technical report and
-> the checkpoints are updated along with them.
-
 <p align="center">
   <img src="docs/assets/teaser_three.gif" width="840" alt="MS-Human-700 and MyoFullBody side by side tracking three clips: turning left, walking forward, walking backward">
   <br><sub>Three KIT training clips (turning left, walking forward, walking backward), each tracked by MS-Human-700

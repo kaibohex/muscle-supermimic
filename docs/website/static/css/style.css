@@ -99,8 +99,6 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .subtitle { font-size: clamp(1.05rem, 2.2vw, 1.3rem); font-weight: 400; color: var(--text-muted); max-width: 40rem; margin: 0 auto 0.9rem; line-height: 1.4; }
 .author-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem 1.5rem; margin-bottom: 0.45rem; font-size: 1.05rem; }
 .author { font-weight: 500; }
-.dev-note { display: inline-flex; align-items: baseline; gap: 0.5rem; max-width: 44rem; margin: 0 auto 1.1rem; padding: 0.4rem 0.9rem; border: 1px solid var(--border); border-radius: var(--radius); font-size: 0.85rem; line-height: 1.4; color: var(--text-muted); text-align: left; }
-.dev-note i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--series-1); transform: translateY(-1px); }
 .author sup, .affiliations sup { font-size: 0.7em; margin-left: 1px; opacity: 0.7; }
 .affiliations { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.2rem 1.2rem; font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.1rem; }
 .link-buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.6rem; margin-bottom: 0.9rem; }
