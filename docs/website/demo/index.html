@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Muscle tracking demo</title>
+  <style>
+    :root {
+      --bg: #f5f5f7;
+      --ink: #1d1d1f;
+      --ink2: #6e6e73;
+      --line: rgba(0, 0, 0, 0.08);
+      --glass: rgba(255, 255, 255, 0.78);
+      --accent: #b8070d;
+      --rest: #d1c9c7;
+      --edge: 16px;
+      --font: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Arial, sans-serif;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    [hidden] { display: none !important; }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--ink); font: 14px/1.4 var(--font); }
+    canvas { display: block; width: 100vw; height: 100vh; cursor: grab; touch-action: none; }
+    canvas:active { cursor: grabbing; }
+    .glass { background: var(--glass); backdrop-filter: saturate(180%) blur(20px); -webkit-backdrop-filter: saturate(180%) blur(20px);
+      box-shadow: 0 0 0 0.5px var(--line), 0 8px 24px rgba(0, 0, 0, 0.06); border-radius: 14px; }
+    #head { position: fixed; top: var(--edge); left: var(--edge); padding: 12px 16px; max-width: min(420px, calc(100vw - 2 * var(--edge))); }
+    #head h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+    #head p { color: var(--ink2); font-size: 13px; margin-top: 2px; }
+    #legend { display: flex; align-items: center; gap: 8px; margin-top: 8px; font: 11px/1 var(--mono); color: var(--ink2); }
+    #legend i { width: 96px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--rest), var(--accent)); }
+    #dock { position: fixed; left: 50%; transform: translateX(-50%); bottom: max(var(--edge), env(safe-area-inset-bottom));
+      width: min(760px, calc(100vw - 2 * var(--edge))); padding: 10px 12px; display: grid; gap: 8px; }
+    .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    button, select { font: 500 13px/1 var(--font); color: var(--ink); background: #fff; border: 0; border-radius: 8px;
+      box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.15); padding: 7px 12px; cursor: pointer; }
+    select { max-width: 280px; min-width: 0; flex: 1 1 180px; }
+    button:hover, select:hover { background: #fafafa; }
+    :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+    label { display: inline-flex; align-items: center; gap: 5px; color: var(--ink2); font-size: 13px; cursor: pointer; user-select: none; }
+    input[type=checkbox] { accent-color: var(--ink); }
+    #bar { position: relative; flex: 1 1 200px; height: 4px; border-radius: 2px; background: rgba(0, 0, 0, 0.08); overflow: hidden; }
+    #progress { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--ink); }
+    .mono { font: 11px/1 var(--mono); color: var(--ink2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    #credits { margin-top: 8px; font-size: 11px; color: var(--ink2); }
+    #credits summary { cursor: pointer; }
+    #credits a { color: inherit; }
+    #fail { position: fixed; top: var(--edge); right: var(--edge); padding: 8px 12px; font-size: 13px; color: var(--accent); }
+    #boot { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; }
+    #boot .glass { padding: 16px 20px; min-width: 240px; text-align: center; }
+    #boot.error #bootMsg { color: var(--accent); }
+    #bootMsg { font: 12px/1.4 var(--mono); color: var(--ink2); margin-top: 6px; }
+    @media (max-width: 560px) { #head p.more { display: none; } #cost { display: none; } }
+    /* embedded in the project page (?embed): the page explains it, so only the controls until full screen */
+    .embed:not(.fs) #head { display: none; }
+    .embed:not(.fs) { --edge: 10px; }
+    @media (max-width: 560px) { .embed:not(.fs) .toggles { display: none; } }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+                   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+  <canvas id="view" aria-label="MyoFullBody tracking a motion-capture clip"></canvas>
+  <div id="head" class="glass">
+    <h1>MyoFullBody, live in your browser</h1>
+    <p>354 muscles driven by the tracking policy, simulated by MuJoCo (WebAssembly) at 100 Hz, on motion-capture clips
+      held out from training.</p>
+    <p class="more">Blue: the reference motion. <span id="hint">Drag the body to push it; drag elsewhere to orbit.</span></p>
+    <div id="legend"><span>activation 0</span><i></i><span>1</span></div>
+    <details id="credits"><summary>Credits &amp; licenses</summary><a href="../">muscle-supermimic</a> · MyoFullBody from <a href="https://github.com/MyoHub/myosuite">MyoSuite</a>
+      as packaged by <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a> (Apache-2.0; arm and hand from MoBL-ARMS,
+      non-commercial use only) · KIT motions retargeted by MuscleMimic</details>
+  </div>
+  <div id="fail" class="glass" hidden>Lost the reference, restarting</div>
+  <div id="boot"><div class="glass"><strong>Loading the demo</strong><div id="bootMsg">starting</div></div></div>
+  <div id="dock" class="glass" hidden>
+    <div class="row">
+      <button id="play" type="button">Pause</button>
+      <button id="restart" type="button">Restart</button>
+      <select id="clip" aria-label="Motion clip"></select>
+      <label class="toggles"><input id="policy" type="checkbox" checked> Policy</label>
+      <label class="toggles"><input id="ghost" type="checkbox" checked> Reference</label>
+      <label class="toggles"><input id="follow" type="checkbox" checked> Follow</label>
+      <button id="full" type="button" hidden>Full screen</button>
+    </div>
+    <div class="row">
+      <div id="bar"><div id="progress"></div></div>
+      <span id="time" class="mono">0.0 s</span>
+      <span id="cost" class="mono"></span>
+    </div>
+  </div>
+  <script type="module" src="main.mjs"></script>
+</body>
+</html>

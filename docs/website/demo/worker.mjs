@@ -1,0 +1,174 @@
+// Simulation worker: loads the exported checkpoint, runs the Tracker's closed loop at real time, and posts the
+// poses the page draws (bone meshes, muscle paths colored by activation, the reference as a ghost).
+
+import loadMujoco from 'https://cdn.jsdelivr.net/npm/@mujoco/mujoco@3.11.0/mujoco.js';
+import * as ort from 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.wasm.min.mjs';
+import { Tracker } from './tracker.mjs';
+
+ort.env.wasm.numThreads = 1; // a static host cannot send the cross-origin isolation headers threads need
+ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
+
+const DRAW_GROUP = 0; // the bone meshes; collision geoms sit in groups 3 and 4
+const ACT_REST = [0.82, 0.79, 0.78], ACT_RED = [0.72, 0.03, 0.05]; // ms-render's activation colors
+const FAIL_DIST = 1.0; // the task's root-position termination [m]
+
+let tr, mj, dg, geoms, tendons, muscleOf;
+const state = { playing: true, policy: true, ghost: true, clip: 0, failed: false, failedAt: 0 };
+let simT = 0, wallT0 = 0, stepMs = 0;
+
+const post = (msg, transfer = []) => self.postMessage(msg, transfer);
+
+async function load(dataUrl) {
+  const meta = await (await fetch(new URL('meta.json', dataUrl))).json();
+  // the files of ms-export-web, the large ones gzipped (a static host serves them as they are)
+  const total = Object.values(meta.sizes).reduce((a, b) => a + b, 0), got = {};
+  const get = async (key) => {
+    const name = meta.files[key], r = await fetch(new URL(name, dataUrl));
+    if (!r.ok) throw new Error(`${name}: HTTP ${r.status}`);
+    const reader = r.body.getReader(), chunks = [];
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      got[key] = (got[key] || 0) + value.byteLength;
+      const mb = Object.values(got).reduce((a, b) => a + b, 0) / 1e6;
+      post({ type: 'progress', text: `downloading ${mb.toFixed(0)} / ${(total / 1e6).toFixed(0)} MB` });
+    }
+    const blob = new Blob(chunks), head = new Uint8Array(await blob.slice(0, 2).arrayBuffer());
+    // still gzip unless the host sent it with Content-Encoding: gzip and the browser already inflated it
+    if (head[0] !== 0x1f || head[1] !== 0x8b) return blob.arrayBuffer();
+    return new Response(blob.stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+  };
+  const [model, policy, frames, init] = await Promise.all(['model', 'policy', 'frames', 'init'].map(get));
+  post({ type: 'progress', text: 'starting MuJoCo' });
+  mj = await loadMujoco();
+  tr = await Tracker.create(mj, ort, { meta, model: new Uint8Array(model), policy: new Uint8Array(policy), frames, init });
+  dg = new mj.MjData(tr.m);
+  const { transfer, ...scene } = sceneDescription();
+  post({ type: 'scene', ...scene, clips: meta.clips.map((c) => ({ name: c.name, length: c.length })) }, transfer);
+  reset(0);
+  wallT0 = performance.now();
+  tick();
+}
+
+/** Static geometry: the drawn geoms with their meshes and colors, and the tendons. */
+function sceneDescription() {
+  const m = tr.m, meshes = {}, transfer = [];
+  geoms = [];
+  for (let g = 0; g < m.ngeom; g++) {
+    if (m.geom_group[g] !== DRAW_GROUP || m.geom_type[g] === 0) continue; // the plane is the page's own floor
+    const mat = m.geom_matid[g], rgba = mat >= 0 ? m.mat_rgba.slice(4 * mat, 4 * mat + 4) : m.geom_rgba.slice(4 * g, 4 * g + 4);
+    const desc = { id: g, body: m.geom_bodyid[g], type: m.geom_type[g], size: Array.from(m.geom_size.slice(3 * g, 3 * g + 3)), rgba: Array.from(rgba) };
+    if (desc.type === 7) {
+      const k = m.geom_dataid[g];
+      desc.mesh = k;
+      if (!meshes[k]) {
+        const va = m.mesh_vertadr[k], vn = m.mesh_vertnum[k], fa = m.mesh_faceadr[k], fn = m.mesh_facenum[k];
+        meshes[k] = { vert: Float32Array.from(m.mesh_vert.subarray(3 * va, 3 * (va + vn))), face: Uint32Array.from(m.mesh_face.subarray(3 * fa, 3 * (fa + fn))) };
+        transfer.push(meshes[k].vert.buffer, meshes[k].face.buffer);
+      }
+    }
+    geoms.push(desc);
+  }
+  // muscles: the tendon each actuator pulls (actuator order = the policy's excitation order)
+  muscleOf = new Int32Array(m.ntendon).fill(-1);
+  tr.meta.ctrl_ids.forEach((a, i) => { if (m.actuator_trntype[a] === 3) muscleOf[m.actuator_trnid[2 * a]] = i; });
+  tendons = [];
+  for (let t = 0; t < m.ntendon; t++) {
+    if (m.tendon_group[t] > 2) continue;
+    tendons.push({ id: t, width: m.tendon_width[t], rgba: Array.from(m.tendon_rgba.slice(4 * t, 4 * t + 4)), muscle: muscleOf[t] });
+  }
+  return { geoms, meshes, maxSegments: 2 * m.nwrap, transfer };
+}
+
+function reset(clip) {
+  tr.reset(clip);
+  state.clip = clip;
+  state.failed = false;
+  simT = 0;
+  wallT0 = performance.now();
+}
+
+function poses(d) {
+  const n = geoms.length, xpos = new Float32Array(3 * n), xmat = new Float32Array(9 * n);
+  geoms.forEach((g, i) => {
+    xpos.set(d.geom_xpos.subarray(3 * g.id, 3 * g.id + 3), 3 * i);
+    xmat.set(d.geom_xmat.subarray(9 * g.id, 9 * g.id + 9), 9 * i);
+  });
+  return { xpos, xmat };
+}
+
+/** Muscle path segments: [x0 y0 z0 x1 y1 z1 r g b radius] each (mjv's tendon segments, pulleys excluded). */
+function segments(d) {
+  const out = [];
+  for (const t of tendons) {
+    const adr = d.ten_wrapadr[t.id], num = d.ten_wrapnum[t.id];
+    let rgb = t.rgba;
+    if (t.muscle >= 0) {
+      const w = Math.min(1, Math.max(0, d.act[tr.meta.act_adr[t.muscle]]));
+      rgb = [0, 1, 2].map((k) => ACT_REST[k] + w * (ACT_RED[k] - ACT_REST[k]));
+    }
+    for (let j = adr; j < adr + num - 1; j++) {
+      if (d.wrap_obj[j] === -2 || d.wrap_obj[j + 1] === -2) continue;
+      out.push(d.wrap_xpos[3 * j], d.wrap_xpos[3 * j + 1], d.wrap_xpos[3 * j + 2],
+        d.wrap_xpos[3 * j + 3], d.wrap_xpos[3 * j + 4], d.wrap_xpos[3 * j + 5], rgb[0], rgb[1], rgb[2], t.width);
+    }
+  }
+  return Float32Array.from(out);
+}
+
+function ghostPoses() {
+  const meta = tr.meta, ref = tr.referenceQpos();
+  dg.qpos.set(tr.d.qpos);
+  meta.free_q.forEach((a, i) => { dg.qpos[a] = ref[i]; });
+  meta.joint_q_adr.forEach((a, j) => { dg.qpos[a] = ref[7 + j]; });
+  mj.mj_kinematics(tr.m, dg);
+  return poses(dg);
+}
+
+async function tick() {
+  const dt = tr.meta.timestep * tr.meta.decimation;
+  if (state.playing) {
+    const target = (performance.now() - wallT0) / 1000;
+    if (target - simT > 0.25) wallT0 += (target - simT - 0.25) * 1000; // fall behind gracefully (slow motion)
+    let n = 0;
+    while (simT < (performance.now() - wallT0) / 1000 && n < 8) {
+      if (tr.f >= tr.clipEnd) { reset(state.clip); break; } // loop the clip
+      if (state.failed) {
+        if (performance.now() - state.failedAt > 1500) reset(state.clip);
+        break;
+      }
+      const t0 = performance.now();
+      if (state.policy) await tr.step();
+      else tr.apply(new Float32Array(tr.meta.nu));
+      stepMs = 0.9 * stepMs + 0.1 * (performance.now() - t0);
+      simT += dt;
+      n++;
+      const ref = tr.referenceQpos(), q = tr.d.qpos, fq = tr.meta.free_q;
+      if (Math.hypot(q[fq[0]] - ref[0], q[fq[1]] - ref[1], q[fq[2]] - ref[2]) > FAIL_DIST) {
+        state.failed = true;
+        state.failedAt = performance.now();
+      }
+    }
+  }
+  const body = poses(tr.d), seg = segments(tr.d), ghost = state.ghost ? ghostPoses() : null;
+  const c = tr.meta.clips[state.clip];
+  const root = tr.meta.free_q.slice(0, 3).map((a) => tr.d.qpos[a]);
+  post({ type: 'frame', body, ghost, seg, root, grab: tr.grabbed ? [...tr.grabPoint(), ...tr.grabbed.target] : null, frame: tr.f - c.start, length: c.length, stepMs, failed: state.failed, playing: state.playing },
+    [body.xpos.buffer, body.xmat.buffer, seg.buffer, ...(ghost ? [ghost.xpos.buffer, ghost.xmat.buffer] : [])]);
+  setTimeout(tick, 4);
+}
+
+self.onmessage = (ev) => {
+  const msg = ev.data;
+  if (msg.type === 'load') load(msg.data).catch((e) => post({ type: 'error', text: String(e && e.message || e) }));
+  else if (msg.type === 'clip') reset(msg.clip);
+  else if (msg.type === 'restart') reset(state.clip);
+  else if (msg.type === 'grab') tr.grab(tr.m.geom_bodyid[msg.geom], msg.point);
+  else if (msg.type === 'drag') tr.drag(msg.target);
+  else if (msg.type === 'release') tr.release();
+  else if (msg.type === 'set') {
+    Object.assign(state, msg.state);
+    if ('playing' in msg.state && msg.state.playing) wallT0 = performance.now() - simT * 1000;
+  }
+};

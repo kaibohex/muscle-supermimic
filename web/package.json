@@ -1,0 +1,14 @@
+{
+  "name": "muscle-supermimic-web",
+  "private": true,
+  "type": "module",
+  "description": "Checks of the browser demo (docs/website/demo) against the native reference, in Node",
+  "scripts": {
+    "align": "node test/align.mjs",
+    "serve": "python3 -m http.server 8000 --directory ../docs/website"
+  },
+  "dependencies": {
+    "@mujoco/mujoco": "3.11.0",
+    "onnxruntime-web": "1.20.1"
+  }
+}

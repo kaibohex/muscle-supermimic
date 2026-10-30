@@ -1,0 +1,11 @@
+# The browser demo's clips: one held-out clip per kind of motion from kit_kinesis_test.txt (none is in training).
+MyoFullBody/gmr/KIT/11/WalkingStraightForwards07_poses.npz
+MyoFullBody/gmr/KIT/12/WalkingStraightBackwards04_poses.npz
+MyoFullBody/gmr/KIT/183/walking_slow03_poses.npz
+MyoFullBody/gmr/KIT/317/walking_fast02_poses.npz
+MyoFullBody/gmr/KIT/348/walking_run06_poses.npz
+MyoFullBody/gmr/KIT/9/LeftTurn03_poses.npz
+MyoFullBody/gmr/KIT/7/RightTurn03_poses.npz
+MyoFullBody/gmr/KIT/6/WalkInClockwiseCircle07_1_poses.npz
+MyoFullBody/gmr/KIT/4/WalkInCounterClockwiseCircle08_poses.npz
+MyoFullBody/gmr/KIT/3/walk_with_support04_poses.npz

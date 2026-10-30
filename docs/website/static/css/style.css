@@ -116,6 +116,15 @@ figcaption strong { color: var(--text); margin-right: 0.3rem; }
 .teaser .video { aspect-ratio: 1920 / 582; }
 .video.square { aspect-ratio: 1 / 1; }
 .video.wide43 { aspect-ratio: 4 / 3; }
+.live { margin: 0.5rem 0 1.5rem; }
+.live-frame { position: relative; aspect-ratio: 16 / 10; border-radius: var(--radius); overflow: hidden; background: #f5f5f7 center / cover no-repeat; border: 1px solid var(--border); }
+.live-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.live-start { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.35rem; width: 100%; border: 0; background: rgba(245, 245, 247, 0.35); color: #1d1d1f; font: inherit; cursor: pointer; }
+.live-start svg { width: 52px; height: 52px; padding: 15px 13px 15px 17px; border-radius: 50%; background: rgba(255, 255, 255, 0.9); fill: #1d1d1f; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); transition: transform .15s; }
+.live-start:hover svg { transform: scale(1.06); }
+.live-start span { font-weight: 600; font-size: 0.95rem; margin-top: 0.4rem; }
+.live-start small { font-size: 0.8rem; color: #5f5e5a; }
+@media (max-width: 560px) { .live-frame { aspect-ratio: 4 / 5; } }
 .clip-label { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.35rem; }
 .clip-label code { font-size: 0.78rem; overflow-wrap: anywhere; }
 .lead { font-size: 1.05rem; }
