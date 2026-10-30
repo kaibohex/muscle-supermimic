@@ -167,7 +167,7 @@ function placeMuscles(seg) {
 
 // camera follows the root (smoothed), keeping the user's orbit offset
 const look = new THREE.Vector3(0, 0, 0.9);
-let follow = true, lookInit = false;
+let follow = true, lookInit = false, episode = -1;
 function followRoot(root) {
   const target = new THREE.Vector3(root[0], root[1], 0.9);
   if (!lookInit) { look.copy(target); lookInit = true; }
@@ -213,7 +213,6 @@ worker.onmessage = (ev) => {
     sel.value = String(msg.clip);
     $('title').textContent = `${model.name}, live in your browser`;
     $('muscles').textContent = msg.nmuscles;
-    lookInit = false;
     $('boot').hidden = true;
     $('dock').hidden = false;
   } else if (msg.type === 'frame') {
@@ -221,6 +220,8 @@ worker.onmessage = (ev) => {
     ghostGroup.visible = !!msg.ghost;
     if (msg.ghost) placeGeoms(ghost, msg.ghost);
     placeMuscles(msg.seg);
+    if (msg.episode !== episode) lookInit = false; // a reset moves the body back to the clip's start: cut, don't pan
+    episode = msg.episode;
     followRoot(msg.root);
     drawGrab(msg.grab);
     $('progress').style.width = `${(100 * msg.frame) / Math.max(1, msg.length - 1)}%`;
@@ -249,7 +250,6 @@ $('play').onclick = () => {
 $('restart').onclick = () => worker.postMessage({ type: 'restart' });
 $('clip').onchange = (e) => {
   worker.postMessage({ type: 'clip', name: clips[Number(e.target.value)].name });
-  lookInit = false;
 };
 for (const key of ['policy', 'ghost']) {
   $(key).onchange = (e) => { ui[key] = e.target.checked; send({ [key]: ui[key] }); };

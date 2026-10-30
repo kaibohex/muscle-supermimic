@@ -16,7 +16,7 @@ const FAIL_DIST = 1.0; // the task's root-position termination [m]
 
 let tr, mj, dg, geoms, tendons, muscleOf, dataUrl;
 const state = { playing: true, policy: true, ghost: true, clip: 0, failed: false, failedAt: 0 };
-let simT = 0, wallT0 = 0, stepMs = 0;
+let simT = 0, wallT0 = 0, stepMs = 0, episode = 0; // episode: counts resets, so the page can cut its camera
 let pendingModel = null, pendingClip = null; // requests the loop applies between steps
 const clipFrames = new Map(); // clip file URL -> its frames, inflated
 
@@ -129,6 +129,7 @@ function sceneDescription() {
 
 function reset(clip, frames) {
   tr.reset(clip, frames);
+  episode++;
   state.clip = clip;
   state.failed = false;
   simT = 0;
@@ -218,7 +219,7 @@ async function step() {
   const body = poses(tr.d), seg = segments(tr.d), ghost = state.ghost ? ghostPoses() : null;
   const c = tr.meta.clips[state.clip];
   const root = tr.meta.free_q.slice(0, 3).map((a) => tr.d.qpos[a]);
-  post({ type: 'frame', body, ghost, seg, root, grab: tr.grabbed ? [...tr.grabPoint(), ...tr.grabbed.target] : null, frame: tr.f, length: c.length, stepMs, failed: state.failed, playing: state.playing },
+  post({ type: 'frame', body, ghost, seg, root, grab: tr.grabbed ? [...tr.grabPoint(), ...tr.grabbed.target] : null, frame: tr.f, episode, length: c.length, stepMs, failed: state.failed, playing: state.playing },
     [body.xpos.buffer, body.xmat.buffer, seg.buffer, ...(ghost ? [ghost.xpos.buffer, ghost.xmat.buffer] : [])]);
 }
 
