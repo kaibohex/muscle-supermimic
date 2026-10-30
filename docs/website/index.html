@@ -52,6 +52,23 @@
   </div>
 </section>
 
+<section class="section" style="padding-bottom: 0.5rem;">
+  <div class="container medium">
+    <figure class="live" id="live" style="margin: 0;">
+      <div class="live-frame" style="background-image: url(static/videos/live_poster.jpg);">
+        <button class="live-start" type="button" data-src="demo/?embed">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11a.5.5 0 00.76.43l9-5.5a.5.5 0 000-.86l-9-5.5A.5.5 0 004 2.5z"/></svg>
+          <span>Run it live in your browser</span><small>about 48 MB to download</small>
+        </button>
+      </div>
+      <figcaption><strong>MyoFullBody, live in your browser.</strong>Its checkpoint of iteration 16000 on 10 held-out clips:
+        MuJoCo's WebAssembly build simulates the body at 100 Hz and onnxruntime-web runs the policy, on your CPU. Blue is the
+        reference motion. Drag a bone to push the body, drag elsewhere to orbit, or open it
+        <a href="demo/">on its own page</a>.</figcaption>
+    </figure>
+  </div>
+</section>
+
 <section class="section" id="overview">
   <div class="container narrow">
     <h2>Overview</h2>
@@ -233,19 +250,6 @@
       <div class="stat"><div class="stat-label">Normalized return, 3 training clips</div><div class="stat-value">0.83<small>0 failed</small></div></div>
       <div class="stat"><div class="stat-label">Normalized return, 108 held-out clips</div><div class="stat-value">0.83<small>7 failed</small></div></div>
     </div>
-    <figure class="live" id="live">
-      <div class="live-frame" style="background-image: url(static/videos/live_poster.jpg);">
-        <button class="live-start" type="button" data-src="demo/?embed">
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11a.5.5 0 00.76.43l9-5.5a.5.5 0 000-.86l-9-5.5A.5.5 0 004 2.5z"/></svg>
-          <span>Run it live in your browser</span><small>about 48 MB to download</small>
-        </button>
-      </div>
-      <figcaption><strong>Live, in your browser: the checkpoint of iteration 16000.</strong>On 10 held-out clips (the
-        videos below are from iteration 10000). MuJoCo's WebAssembly build simulates the body at 100 Hz and onnxruntime-web
-        runs the policy, on your CPU. Blue is the
-        reference motion. Drag a bone to push the body, drag elsewhere to orbit, or open it
-        <a href="demo/">on its own page</a>.</figcaption>
-    </figure>
     <h3>Training clips</h3>
     <div class="three-col">
       <figure><video class="video square" src="static/videos/train_turn_left05.mp4" muted loop playsinline preload="metadata" data-autoplay aria-label="Turning left"></video>
