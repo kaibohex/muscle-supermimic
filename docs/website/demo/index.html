@@ -26,6 +26,9 @@
       box-shadow: 0 0 0 0.5px var(--line), 0 8px 24px rgba(0, 0, 0, 0.06); border-radius: 14px; }
     #head { position: fixed; top: var(--edge); left: var(--edge); padding: 12px 16px; max-width: min(420px, calc(100vw - 2 * var(--edge))); }
     #head h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+    #head .title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    #about { padding: 4px 9px; font-size: 12px; flex: none; }
+    #head.collapsed #aboutText { display: none; }
     #head p { color: var(--ink2); font-size: 13px; margin-top: 2px; }
     #legend { display: flex; align-items: center; gap: 8px; margin-top: 8px; font: 11px/1 var(--mono); color: var(--ink2); }
     #legend i { width: 96px; height: 6px; border-radius: 3px; background: linear-gradient(90deg, var(--rest), var(--accent)); }
@@ -42,7 +45,7 @@
     #bar { position: relative; flex: 1 1 200px; height: 4px; border-radius: 2px; background: rgba(0, 0, 0, 0.08); overflow: hidden; }
     #progress { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--ink); }
     .mono { font: 11px/1 var(--mono); color: var(--ink2); white-space: nowrap; font-variant-numeric: tabular-nums; }
-    #credits { margin-top: 8px; font-size: 11px; color: var(--ink2); }
+    #credits { margin-top: 6px; font-size: 11px; color: var(--ink2); }
     #credits summary { cursor: pointer; }
     #credits a { color: inherit; }
     #fail { position: fixed; top: var(--edge); right: var(--edge); padding: 8px 12px; font-size: 13px; color: var(--accent); }
@@ -67,14 +70,17 @@
 <body>
   <canvas id="view" aria-label="MyoFullBody tracking a motion-capture clip"></canvas>
   <div id="head" class="glass">
-    <h1>MyoFullBody, live in your browser</h1>
+    <div class="title"><h1>MyoFullBody, live in your browser</h1>
+      <button id="about" type="button" aria-expanded="true" aria-controls="aboutText">Hide</button></div>
+    <div id="aboutText">
     <p>354 muscles driven by the tracking policy, simulated by MuJoCo (WebAssembly) at 100 Hz, on motion-capture clips
       held out from training.</p>
     <p class="more">Blue: the reference motion. <span id="hint">Drag the body to push it; drag elsewhere to orbit.</span></p>
-    <div id="legend"><span>activation 0</span><i></i><span>1</span></div>
     <details id="credits"><summary>Credits &amp; licenses</summary><a href="../">muscle-supermimic</a> · MyoFullBody from <a href="https://github.com/MyoHub/myosuite">MyoSuite</a>
       as packaged by <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a> (Apache-2.0; arm and hand from MoBL-ARMS,
       non-commercial use only) · KIT motions retargeted by MuscleMimic</details>
+    </div>
+    <div id="legend"><span>activation 0</span><i></i><span>1</span></div>
   </div>
   <div id="fail" class="glass" hidden>Lost the reference, restarting</div>
   <div id="boot"><div class="glass"><strong>Loading the demo</strong><div id="bootBar"><i></i></div><div id="bootMsg">starting</div></div></div>

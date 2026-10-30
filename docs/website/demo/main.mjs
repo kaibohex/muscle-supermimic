@@ -198,6 +198,16 @@ for (const key of ['policy', 'ghost']) {
 }
 $('follow').onchange = (e) => { follow = e.target.checked; };
 
+// ---------------- the info card: open on a large screen until the first touch of the view ----------------
+function collapseHead(collapsed) {
+  $('head').classList.toggle('collapsed', collapsed);
+  $('about').textContent = collapsed ? 'About' : 'Hide';
+  $('about').setAttribute('aria-expanded', String(!collapsed));
+}
+$('about').onclick = () => collapseHead(!$('head').classList.contains('collapsed'));
+collapseHead(matchMedia('(max-width: 900px), (max-height: 700px)').matches);
+renderer.domElement.addEventListener('pointerdown', () => collapseHead(true));
+
 // ---------------- embedded in the project page, full screen ----------------
 // Windowed in the page, the wheel and vertical swipes scroll the page instead of zooming and orbiting; the page also
 // pauses the simulation while the viewer is scrolled out of sight. Full screen gives the controls back.
