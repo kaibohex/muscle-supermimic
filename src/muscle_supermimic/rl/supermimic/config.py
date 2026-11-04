@@ -81,3 +81,75 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     """Autocast dtype for MLP matmuls (state integration, FK and rewards stay fp32)."""
     compile: bool = True
     """torch.compile the world-model rollout, imagination step and heads (CUDA only)."""
+
+    # ---- BlinkMimic / InstantTrack options (github.com/fuyichen0725/blinkmimic). The defaults reproduce the runner
+    # above; scripts/train_blink.sh sets the drop-in recipe (docs/training.md) ----
+    pi_ema: float = 0.0
+    """Polyak average of the policy weights and normalizers (decay per policy update; InstantTrack: 0.995). The
+    average is the deployed policy: checkpoints store it as "pi" (what ms-eval and play read) and the live policy as
+    "pi_live"; collection keeps using the live policy. 0: off."""
+    pi_opt: Literal["adam", "muon"] = "adam"
+    """Policy optimizer: Adam, or Muon (Jordan et al. 2024) on the hidden weight matrices of the encoder and decoder at
+    Adam's update RMS (same lr; Liu et al. 2025) with Adam on the first / last layers and vectors (optim.py)."""
+    wm_opt: Literal["adam", "muon"] = "adam"
+    """World-model optimizer: Adam, or the same Muon / Adam split on the world-model MLP."""
+    muon_momentum: float = 0.95
+    """Momentum of Muon's (Nesterov) update on the hidden matrices, policy and world model (torch.optim.Muon's default)."""
+    pi_beta1: float = 0.9
+    """Adam beta1 of the policy (SHAC uses 0.7)."""
+    fused_adam: bool = False
+    """Fused Adam kernels (with no_sync also the device-side skip of a non-finite policy update)."""
+    no_sync: bool = False
+    """Remove the host-device synchronizations of the update loop: the normalizers' freeze test, the sampling of
+    imagination starts (a stable sort instead of nonzero) and the finite-gradient test before the policy step (the
+    gradient is zeroed and the step gated on the device: needs fused_adam). Same updates up to floating-point rounding."""
+    pi_lr_mult: float = 1.0
+    """Policy learning rate = lr x this (world model and critic keep lr)."""
+    lr_decay_ret: float = 0.0
+    """Progress-triggered decay of pi_lr_mult (0: off): once the logged training return (ep_ret_norm, every
+    log_interval iterations) reaches this, the multiplier ramps linearly to 1 over lr_decay_len iterations."""
+    lr_decay_len: int = 300
+    lr_decay_by: int = 0
+    """With lr_decay_ret: start the decay at this iteration at the latest, also if the training return has not reached
+    lr_decay_ret (0: no deadline)."""
+    empty_cache: bool = True
+    """torch.cuda.empty_cache() after every policy update: hands the update's cached blocks to MuJoCo-Warp, which
+    allocates outside torch's pool, at the price of a device synchronization and the allocator refilling its cache."""
+    wm_structured: bool = False
+    """Semi-implicit world model (BlinkMimic): the network predicts the velocity increments and position corrections
+    on top of the drift the old and new velocities imply over the step's Euler substeps, instead of the position
+    increments themselves (networks.WorldModel)."""
+    wm_mirror: float = 0.0
+    """Share of each world-model batch replaced by its left-right mirror image (BlinkMimic: 0.5), the physical symmetry
+    of the body as data augmentation: states, activations, excitations and foot touch are mirrored with the maps of
+    tasks/tracking/mdp/mirror.py, validated on the model at start-up. 0: off."""
+    eprobe_share: float = 0.0
+    """Evaluation-guided resets (BlinkMimic: 0.15): this share of the training resets goes to the eprobe_win_s before
+    the places where the deployed policy fails. Every eprobe_every iterations from eprobe_start, a sweep runs it,
+    deterministic and without resets, in a second evaluation-only env: one probe world per eprobe_tile_s of every
+    clip, started a random lead in eprobe_lead_s earlier on the reference and run to its tile's end; the per-bin
+    counts of first failures decay by eprobe_decay per sweep. 0: off. The sweep runs eagerly and costs about as much
+    as that many simulator steps of that many worlds (printed per sweep)."""
+    eprobe_tile_s: float = 6.0
+    eprobe_lead_s: tuple[float, float] = (4.0, 9.0)
+    eprobe_every: int = 125
+    eprobe_start: int = 1000
+    """First sweep: before it nearly every probe fails and the focus would be about uniform."""
+    eprobe_win_s: float = 10.0
+    eprobe_decay: float = 0.7
+    cuda_graph: bool = False
+    """Systems (BlinkMimic): capture one world-model update and one policy + critic update (sampling, forward,
+    backward, optimizer, EMA) as CUDA graphs after three warm-up calls and replay them from then on. The same updates
+    up to floating-point rounding, on another random stream. Needs no_sync, fused_adam, empty_cache off and a CUDA
+    device; the learning rate is then a device tensor filled every iteration, and Adam keeps its step on the GPU."""
+    collect_graph: bool = False
+    """Systems (BlinkMimic's --collect_graph --reset_masked): one collection step (observation, policy and action
+    noise, the simulator's substeps including MuJoCo-Warp's solver loop, reward, termination, buffer write, normalizer
+    updates, bin statistics and the resets of ended episodes as fixed-size masked updates) runs through a thin
+    simulator wrapper (collector.py) in place of mjlab's manager env and is replayed as one CUDA graph after three
+    eager warm-up steps: no host synchronization in a step. The same transitions up to floating-point rounding, on
+    another random stream. Needs no_sync and the motion command's bin_fix, no eprobe_share and no observation history;
+    the replay buffer's write head lives on the device. On a CPU device the wrapper runs eagerly."""
+    max_hours: float = 0.0
+    """Stop after this much training wall-clock (the runner's clock: compilation, graph capture and checkpoints
+    included, process start-up and data loading excluded), saving a final checkpoint. 0: no limit."""

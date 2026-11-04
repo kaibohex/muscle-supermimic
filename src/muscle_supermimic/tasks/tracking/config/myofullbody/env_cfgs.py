@@ -20,13 +20,14 @@ TRACKED_BODIES: tuple[str, ...] = (
 FOOT_BODIES: tuple[str, ...] = ("calcn_r", "toes_r", "calcn_l", "toes_l")
 
 
-def myofullbody_flat_tracking_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+def myofullbody_flat_tracking_env_cfg(play: bool = False, muscle_obs: bool = True) -> ManagerBasedRlEnvCfg:
     """MyoFullBody as MuscleMimic trains it: fingers disabled (31 joint DoF, 354 muscles), self-contact pairs kept.
 
     Args:
       play: auto-reset, one env, every clip from its first frame (mjlab's ``play``).
+      muscle_obs: observe muscle length, velocity and force (see ``make_tracking_env_cfg``).
     """
-    cfg = make_tracking_env_cfg()
+    cfg = make_tracking_env_cfg(muscle_obs=muscle_obs)
     cfg.scene.entities = {"robot": get_myofullbody_cfg(self_collisions=True, disable_fingers=True)}
     motion_cmd = cfg.commands["motion"]
     assert isinstance(motion_cmd, MotionCommandCfg)

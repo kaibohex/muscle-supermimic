@@ -26,9 +26,12 @@ from tensordict import TensorDict
 
 from muscle_supermimic.rl.supermimic import networks
 from muscle_supermimic.rl.supermimic.buffer import ReplayBuffer
+from muscle_supermimic.rl.supermimic.collector import STATS, Collector
 from muscle_supermimic.rl.supermimic.config import SuperMimicRunnerCfg
-from muscle_supermimic.rl.supermimic.networks import Critic, Policy, WorldModel
+from muscle_supermimic.rl.supermimic.networks import Critic, Policy, RunningNorm, WorldModel
+from muscle_supermimic.rl.supermimic.optim import MuonAdam, gated_step
 from muscle_supermimic.tasks.tracking.mdp.heads import NUM_TOUCH, StepCtx, flatten_body, unflatten_body
+from muscle_supermimic.tasks.tracking.mdp.mirror import Mirror
 
 
 class AnalyticObsGroup:
@@ -83,6 +86,48 @@ class ClipRowGrad(torch.autograd.Function):
         return (None, None, None) + tuple(g * k.view(-1, *(1,) * (g.dim() - 1)) for g in gs)
 
 
+class Graphed:
+    """Run ``fn`` eagerly until ``ready()``; then eagerly on a side stream for ``warmup`` calls, capture it as a CUDA
+    graph on the next call and replay it from then on (BlinkMimic). Each call is one update; the outputs are cloned
+    out of the graph's pool."""
+
+    def __init__(self, fn, ready, warmup: int = 3):
+        self.fn, self.ready, self.warmup, self.calls, self.graph, self.out = fn, ready, warmup, 0, None, None
+
+    def __call__(self):
+        if self.graph is None and not self.ready():
+            return self.fn()
+        self.calls += 1
+        if self.calls <= self.warmup:
+            side = torch.cuda.Stream()
+            side.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(side):
+                out = self.fn()
+            torch.cuda.current_stream().wait_stream(side)
+            return out
+        if self.graph is None:
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()  # return the eager phase's cached blocks before the graph takes its own pool
+            t0 = time.time()
+            self.graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(self.graph):
+                self.out = self.fn()
+            torch.cuda.synchronize()
+            print(f"cuda_graph: captured {self.fn.__name__} in {time.time() - t0:.1f} s, "
+                  f"{torch.cuda.memory_reserved() / 2**30:.1f} GB reserved", flush=True)  # fmt: skip
+        self.graph.replay()
+        return tuple(x.clone() for x in self.out)
+
+
+def set_lr(opt, value: float):
+    """The learning rate of every parameter group: filled in place where it is a device tensor (cuda_graph)."""
+    for g in opt.param_groups:
+        if torch.is_tensor(g["lr"]):
+            g["lr"].fill_(value)
+        else:
+            g["lr"] = value
+
+
 class SuperMimicRunner:
     def __init__(self, env, train_cfg: dict, log_dir: str | None = None, device: str = "cpu", **kwargs):
         names = {f.name for f in fields(SuperMimicRunnerCfg)}
@@ -118,6 +163,16 @@ class SuperMimicRunner:
         networks.AMP_DTYPE = torch.bfloat16 if cfg.amp == "bf16" and str(device).startswith("cuda") else None
         self._build_networks()
         self.it, self.wall_offset, self.sim_steps = 0, 0.0, 0
+        self._decay_at = None  # lr_decay_ret: the iteration the policy learning-rate decay was triggered at
+        self.mirror = None  # wm_mirror: the model's left-right maps (validated on the model here)
+        if cfg.wm_mirror > 0:
+            self.mirror = Mirror(self.cmd.kin, self.cmd.geo, tuple(self.cmd.touch_sensor.cfg.primary.pattern), device)
+            print("wm_mirror: " + ", ".join(f"{k} {v:.1e}" for k, v in self.mirror.residuals.items()), flush=True)
+        # eprobe_share: the probe env (built at the first sweep), the decayed per-bin counts of the deployed policy's
+        # failures, and the last sweep's failure fraction (logged as probe_fail)
+        self.probe, self.probe_fail = None, float("nan")
+        self.collector = None  # collect_graph: the thin simulator wrapper (collector.py), built by learn()
+        self.ep_fail = torch.zeros(self.motion.num_bins, device=device) if cfg.eprobe_share > 0 else None
         # per-component floors on the error normalization (pos, rot, lin vel, ang vel, q, qd increments)
         f = lambda n, v: torch.full((n,), v)  # noqa: E731
         self.err_floor = torch.cat((f(3, 3e-3), f(3, 5e-3), f(3, 2e-2), f(3, 5e-2), f(self.nq, 3e-3), f(self.nq, 5e-2))).to(device)
@@ -126,11 +181,12 @@ class SuperMimicRunner:
         self.wm_rollout, self.wm_err = c(self._wm_rollout), c(self._wm_err)
         self.imag_step, self.reward_term, self.critic_input = c(self._imag_step), c(self._reward_term), c(self._critic_input)
 
-    NET_FIELDS = ("wm_hidden", "enc_hidden", "dec_hidden", "latent_dim", "critic_hidden")
+    NET_FIELDS = ("wm_hidden", "enc_hidden", "dec_hidden", "latent_dim", "critic_hidden", "wm_structured")
 
     def _build_networks(self):
         c, dev = self.cfg, self.device
-        self.wm = WorldModel(self.nq, self.nm, NUM_TOUCH, c.wm_hidden).to(dev)
+        self.wm = WorldModel(self.nq, self.nm, NUM_TOUCH, c.wm_hidden, structured=c.wm_structured, dt=self.uenv.step_dt,
+                             substeps=self.uenv.cfg.decimation).to(dev)  # fmt: skip
         self.pi = Policy(self.obs_policy.dim, self.obs_goal.dim, self.nm, c.enc_hidden, c.dec_hidden, c.latent_dim,
                          c.init_excitation).to(dev)  # fmt: skip
         self.critic = Critic(self.obs_policy.dim + self.obs_goal.dim + self.heads.critic_extras_dim(), c.critic_hidden).to(dev)
@@ -138,9 +194,57 @@ class SuperMimicRunner:
         if c.critic_target_alpha > 0:
             self.critic_targ = copy.deepcopy(self.critic).requires_grad_(False)
             self.critic_targ.norm = self.critic.norm  # one input normalizer, updated with the online critic
-        self.opt_wm = torch.optim.Adam(self.wm.parameters(), lr=c.lr)
-        self.opt_pi = torch.optim.Adam(self.pi.parameters(), lr=c.lr, betas=(0.9, 0.95))
-        self.opt_v = torch.optim.Adam(self.critic.parameters(), lr=c.lr)
+        assert not c.no_sync or c.fused_adam, "no_sync gates the policy step on the device: needs fused_adam"
+        graph = c.cuda_graph
+        assert not graph or (c.no_sync and c.fused_adam and not c.empty_cache and str(dev).startswith("cuda")), \
+            "cuda_graph needs no_sync, fused_adam, empty_cache off and a CUDA device"
+        for net in (self.wm, self.pi, self.critic):
+            for m in net.modules():
+                if isinstance(m, RunningNorm):
+                    m.no_sync = c.no_sync
+
+        def adam(params, **kw):
+            if graph:  # the learning rate a device tensor (filled every iteration), the step count on the GPU
+                return torch.optim.Adam(params, lr=torch.tensor(c.lr, device=dev), fused=True, capturable=True, **kw)
+            return torch.optim.Adam(params, lr=c.lr, **({"fused": True} if c.fused_adam else {}), **kw)
+
+        if c.wm_opt == "muon":
+            self.opt_wm = MuonAdam(self.wm, [self.wm.net], lr=c.lr, betas=(0.9, 0.999), fused=c.fused_adam, capturable=graph,
+                                   momentum=c.muon_momentum)  # fmt: skip
+        else:
+            self.opt_wm = adam(self.wm.parameters())
+        if c.pi_opt == "muon":
+            self.opt_pi = MuonAdam(self.pi, [self.pi.enc, self.pi.dec], lr=c.lr, betas=(c.pi_beta1, 0.95), fused=c.fused_adam,
+                                   capturable=graph, momentum=c.muon_momentum)  # fmt: skip
+        else:
+            self.opt_pi = adam(self.pi.parameters(), betas=(c.pi_beta1, 0.95))
+        self.opt_v = adam(self.critic.parameters())
+        # pi_ema: Polyak average of the policy (parameters and normalizer buffers), the deployed policy
+        self.pi_avg, self._ema_n = None, 0
+        if c.pi_ema > 0:  # device=dev: the update counter on the GPU too, so a captured EMA step advances it on replay
+            self.pi_avg = torch.optim.swa_utils.AveragedModel(
+                self.pi, device=dev, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(c.pi_ema), use_buffers=True)
+        self.nonfinite = torch.zeros((), dtype=torch.long, device=dev)  # no_sync: skipped non-finite policy updates
+
+    @property
+    def deployed(self) -> Policy:
+        """The policy that is evaluated, played and checkpointed as "pi": the EMA average with pi_ema, else the live one."""
+        return self.pi_avg.module if self.pi_avg is not None else self.pi
+
+    @torch.no_grad()
+    def ema_update(self):
+        """One EMA step of the deployed policy after a policy update: the first call copies the live policy (as
+        AveragedModel does), later ones take AveragedModel's lerp without its host-side first-call test."""
+        if self.pi_avg is None:
+            return
+        if self._ema_n == 0:
+            self.pi_avg.update_parameters(self.pi)
+        else:
+            avg = list(self.pi_avg.module.parameters()) + list(self.pi_avg.module.buffers())
+            live = [t.detach() for t in list(self.pi.parameters()) + list(self.pi.buffers())]
+            torch._foreach_lerp_(avg, live, 1 - self.cfg.pi_ema)
+            self.pi_avg.n_averaged += 1
+        self._ema_n += 1
 
     # ------------------------------------------------------------------ analytic pieces
     def _wm_rollout(self, s, act, a):
@@ -154,7 +258,7 @@ class SuperMimicRunner:
         return tuple(torch.stack([P[i] for P in preds], 1) for i in range(6)) + (torch.stack(touch, 1),)  # (B, k, ...)
 
     def _wm_err(self, S_hat, s1, touch1, mask):
-        std = torch.maximum(self.wm.out_norm.std(), self.err_floor)
+        std = torch.maximum(self.wm.inc_norm.std(), self.err_floor)
         e = (self.wm.state_error(S_hat[:6], unflatten_body(s1, self.nq)) / std) ** 2  # (B, k, D)
         e = e.mean(-1)
         e_touch = ((S_hat[6] - self.wm.touch_norm(touch1)) ** 2).mean(-1)
@@ -206,9 +310,20 @@ class SuperMimicRunner:
         return c.lr * (0.03 + 0.97 * 0.5 * (1 + math.cos(math.pi * it / c.lr_decay_iters)))
 
     # ------------------------------------------------------------------ updates
+    def _mirror_windows(self, w: dict, n: int) -> dict:
+        """The first n windows replaced by their left-right mirror images (body states, activations, excitations,
+        touch); the episode-end mask is the same for a window and its image."""
+        out = dict(w)
+        mb = lambda x: flatten_body(self.mirror.body(unflatten_body(x, self.nq)))  # noqa: E731
+        for k, fn in (("s", mb), ("s1", mb), ("act", self.mirror.muscles), ("a", self.mirror.muscles), ("touch1", self.mirror.touch)):
+            out[k] = torch.cat((fn(w[k][:n]), w[k][n:]))
+        return out
+
     def wm_update(self):
         c = self.cfg
         w = self.buffer.sample_windows(c.wm_batch, c.wm_window)
+        if self.mirror is not None:
+            w = self._mirror_windows(w, int(c.wm_batch * c.wm_mirror))
         S_hat = self.wm_rollout(w["s"], w["act"], w["a"])
         loss, e_last, e_touch = self.wm_err(S_hat, w["s1"], w["touch1"], w["mask"])
         self.opt_wm.zero_grad(set_to_none=True)
@@ -221,6 +336,14 @@ class SuperMimicRunner:
     def sample_valid_starts(self, B: int):
         starts, hists, n = [], [], 0
         m, H = self.motion, self.cfg.horizon
+        if self.cfg.no_sync:
+            # fixed-size selection without reading the valid count on the host: stable-sort the valid candidates first
+            # (only starts within H frames of a clip end are invalid: a few % of the KIT clips' frames)
+            s, h = self.buffer.sample_starts(2 * B, self.hist)
+            f = s["f"]
+            ok = f + H <= m.clip_end[m.clip_id[f]]
+            idx = torch.sort((~ok).to(torch.uint8), stable=True).indices[:B]
+            return {k: v[idx] for k, v in s.items()}, {k: v[idx] for k, v in h.items()}
         while n < B:
             s, h = self.buffer.sample_starts(2 * B, self.hist)
             f = s["f"]
@@ -264,7 +387,14 @@ class SuperMimicRunner:
         S_all = tuple(flat([St[i] for St in Ss]) for i in range(len(S0)))
         r, d = self.reward_term(S_all, flat(Fs), flat(As), flat(Aps))
         r, d = r.view(HZ, B), d.view(HZ, B)
-        alive = torch.cumprod(1 - d, 0)  # c_{t+1}
+        if c.cuda_graph:  # the survival products as a loop: cumprod's backward tests for zeros on the host
+            acc, cs = torch.ones_like(d[0]), []
+            for t in range(HZ):
+                acc = acc * (1 - d[t])
+                cs.append(acc)
+            alive = torch.stack(cs)
+        else:
+            alive = torch.cumprod(1 - d, 0)  # c_{t+1}
         c_t = torch.cat((torch.ones(1, B, device=dev), alive[:-1]), 0)
         disc = c.gamma ** torch.arange(HZ, device=dev, dtype=torch.float32).unsqueeze(-1)
         J = (disc * c_t * r).sum(0)
@@ -280,8 +410,18 @@ class SuperMimicRunner:
         loss.backward()
         gn = nn.utils.clip_grad_norm_(self.pi.parameters(), c.grad_clip)
         nn.utils.clip_grad_value_(self.pi.parameters(), c.policy_grad_clip_value)
-        if torch.isfinite(gn):
+        if c.no_sync:
+            # skip a non-finite update without a host read: zero the gradients on the device and gate the optimizer step
+            # (parameters and optimizer state unchanged); counted in the log column nonfinite
+            finite = torch.isfinite(gn)
+            self.nonfinite.add_((~finite).long())
+            for p in self.pi.parameters():
+                if p.grad is not None:
+                    p.grad.copy_(torch.where(finite, p.grad, 0.0))
+            gated_step(self.opt_pi, finite)
+        elif torch.isfinite(gn):
             self.opt_pi.step()
+        self.ema_update()
         clip_frac = torch.stack(clipped).mean() if clipped else torch.zeros((), device=dev)
         set_requires_grad(self.wm, True)
         set_requires_grad(self.critic, True)
@@ -317,8 +457,28 @@ class SuperMimicRunner:
 
     # ------------------------------------------------------------------ simulator
     @torch.no_grad()
+    def init_collection(self):
+        """A new replay buffer and episode returns, the env's observation, and with collect_graph the collector (it
+        writes at the buffer's device-side write head)."""
+        c, u = self.cfg, self.uenv
+        self.buffer = ReplayBuffer(c.buffer_steps, u.num_envs, self.heads.body_state_dim, self.nm, NUM_TOUCH, self.device)
+        self.ep_ret = torch.zeros(u.num_envs, device=self.device)
+        self.obs = self.env.get_observations()
+        self.collector = None
+        if c.collect_graph:
+            self.buffer.use_device_ptr()
+            self.collector = Collector(self)
+
+    @torch.no_grad()
     def collect(self, n_steps: int, stats: dict):
         u, cmd, N = self.uenv, self.cmd, self.uenv.num_envs
+        if self.collector is not None:  # collect_graph: the thin simulator wrapper, one CUDA graph per step
+            for _ in range(n_steps):
+                out = self.collector.step()
+                self.sim_steps += N
+                for k in STATS:
+                    stats[k].append(out[k].clone())
+            return
         for _ in range(n_steps):
             S = cmd.read_state()
             f = cmd.f.clone()
@@ -335,6 +495,7 @@ class SuperMimicRunner:
                              "r": rew, "f": f, "ep_step": ep_step, "done": done})  # fmt: skip
             self.wm.in_norm.update(self.wm.inputs(S, S[6], S1[6]))
             self.wm.out_norm.update(self.wm.targets(S, S1))
+            self.wm.inc_norm.update(WorldModel.increments(S, S1))
             self.wm.touch_norm.update(S1[7])
             self.sim_steps += N
             self.ep_ret += rew
@@ -353,42 +514,147 @@ class SuperMimicRunner:
                 obs = TensorDict(obs_dict, batch_size=[N])
             self.obs = obs
 
+    # ------------------------------------------------------------------ evaluation-guided resets (BlinkMimic --eprobe_*)
+    def _build_probe(self):
+        """A second, evaluation-only env of probe worlds, one per tile of eprobe_tile_s of every clip, on the training
+        env's own cfg (no noise or randomization exist; no resets). Built at the first sweep, so play and evaluation
+        runners never pay for it."""
+        from mjlab.envs import ManagerBasedRlEnv
+        from mjlab.rl import RslRlVecEnvWrapper
+
+        c, m, dev = self.cfg, self.motion, self.device
+        tile = max(1, round(c.eprobe_tile_s / self.uenv.step_dt))
+        tiles = torch.cat([torch.arange(int(m.clip_start[i]), int(m.clip_end[i]) - 1, tile) for i in range(len(m.names))]).to(dev)
+        cfg = copy.deepcopy(self.uenv.cfg)
+        cfg.scene.num_envs = P = len(tiles)
+        cfg.commands[c.command_name].sampling_mode = "fixed"
+        cfg.auto_reset = False
+        t0 = time.time()
+        env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=cfg, device=dev))
+        pcmd = env.unwrapped.command_manager.get_term(c.command_name)
+        assert pcmd.motion.names == m.names and pcmd.motion.num_frames == m.num_frames, "the probe env loaded another motion library"
+        self.probe = {"env": env, "cmd": pcmd, "tiles": tiles, "tile": tile, "P": P}
+        print(f"eprobe: {P} probe worlds (tiles of {tile} frames over {len(m.names)} clips) built in {time.time() - t0:.0f} s", flush=True)
+
+    @torch.no_grad()
+    def eprobe_burst(self, it: int):
+        """One sweep of the deployed policy over all clips under evaluation conditions: each probe starts a random lead
+        before its tile, exactly on the reference, and runs to its tile's end or the clip's last frame; a finished probe
+        keeps stepping on its frozen last frame (ignored). The first failures update ep_fail and the training env's
+        focus distribution (eprobe_finish)."""
+        if self.probe is None:
+            self._build_probe()
+        c, m, dev = self.cfg, self.motion, self.device
+        env, pcmd, tiles, tile, P = (self.probe[k] for k in ("env", "cmd", "tiles", "tile", "P"))
+        u = env.unwrapped
+        t0 = time.time()
+        lo, hi = (max(0, round(s / u.step_dt)) for s in c.eprobe_lead_s)
+        lead = int(torch.randint(lo, hi + 1, (1,)))
+        cid = m.clip_id[tiles]
+        f0 = torch.maximum(tiles - lead, m.clip_start[cid])
+        stop = torch.minimum(tiles + tile, m.clip_end[cid])
+        pcmd.fixed_frames, pcmd.f_cap = f0, stop
+        obs = TensorDict(u.reset(env_ids=torch.arange(P, device=dev))[0], batch_size=[P])
+        pi = self.deployed
+        fail_f = torch.full((P,), -1, dtype=torch.long, device=dev)
+        failed = torch.zeros(P, dtype=torch.bool, device=dev)
+        done = torch.zeros_like(failed)
+        steps = 0
+        for _ in range(lead + tile):
+            f_now = pcmd.f.clone()
+            a = pi(obs["policy"], obs["goal"])
+            obs, _, dones, _ = env.step(a)
+            steps += 1
+            first = ~failed & ~done & (u.reset_terminated | ~torch.isfinite(a).all(-1))  # a non-finite world counts as failed
+            fail_f = torch.where(first, f_now, fail_f)
+            failed |= first
+            done |= (pcmd.f >= stop) | dones.bool()  # its tile's end, the clip's last frame or a failure
+            if bool(done.all()):
+                break
+            ids = dones.nonzero(as_tuple=False).squeeze(-1)
+            if len(ids) > 0:  # mjlab asks for a reset of ended envs before the next step; they restart, ignored
+                obs = TensorDict(u.reset(env_ids=ids)[0], batch_size=[P])
+        self.eprobe_finish(it, lead, steps, time.time() - t0, fail_f)
+
+    def focus_from_failures(self, fail: torch.Tensor) -> torch.Tensor | None:
+        """The focus reset distribution over bins: the failure weights of each bin spread over the eprobe_win_s before
+        it in the same clip (the failure's bin included). None without any failure."""
+        if fail.sum() <= 0:
+            return None
+        m, dev = self.motion, self.device
+        nb = m.num_bins
+        ar = torch.arange(nb, device=dev)
+        nxt = ar + 1  # the next bin of the same clip, or the bin itself at a clip end
+        nxt = torch.where((nxt < nb) & (m.bin_clip[nxt.clamp(max=nb - 1)] == m.bin_clip), nxt, ar)
+        win = max(1, round(self.cfg.eprobe_win_s / self.cmd.cfg.bin_seconds))
+        w = q = fail.clone()
+        for _ in range(win):  # w[b] <- w[b + 1] within the clip: after k steps, fail[b + k]
+            w = w[nxt] * (nxt != ar).float()
+            q = q + w
+        return q / q.sum()
+
+    def eprobe_finish(self, it: int, lead: int, steps: int, secs: float, fail_f: torch.Tensor):
+        c, m = self.cfg, self.motion
+        self.ep_fail.mul_(c.eprobe_decay)
+        hit = fail_f[fail_f >= 0]
+        self.ep_fail.index_add_(0, m.frame_bin[hit], torch.ones_like(hit, dtype=self.ep_fail.dtype))
+        self.cmd.set_focus(self.focus_from_failures(self.ep_fail), c.eprobe_share)
+        P = len(fail_f)
+        self.probe_fail = len(hit) / P
+        clips = sorted({m.names[int(m.clip_id[f])] for f in hit.tolist()})
+        print(f"eprobe it {it}: lead {lead} frames, {steps} steps in {secs:.0f} s | {len(hit)}/{P} probes failed in "
+              f"{len(clips)} clips {clips[:6]}{' ...' if len(clips) > 6 else ''}", flush=True)  # fmt: skip
+
     # ------------------------------------------------------------------ mjlab runner interface
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):
         del init_at_random_ep_len  # episodes already start at sampled reference frames
         c, u = self.cfg, self.uenv
         assert not u.cfg.auto_reset, "SuperMimic records terminal states: the training env needs auto_reset=False"
-        self.buffer = ReplayBuffer(c.buffer_steps, u.num_envs, self.heads.body_state_dim, self.nm, NUM_TOUCH, self.device)
-        self.ep_ret = torch.zeros(u.num_envs, device=self.device)
-        self.obs = self.env.get_observations()
+        self.init_collection()
         logger = self._make_logger()
-        stats = {"r": [], "r_terms": [], "ep_len": [], "ep_ret": [], "term": [], "done": []}
+        stats = {k: [] for k in STATS}
         self.collect(max(c.warmup_steps, c.wm_window + self.hist + 1), stats)
+        if c.cuda_graph:
+            # captured sampling reads the buffer's write head and fill level on the device, so the updates are captured
+            # at once (after three eager warm-up calls each) instead of once the buffer is full; the policy update's
+            # capture waits for the first (eager) EMA copy of the policy
+            if self.buffer.ptr_t is None:
+                self.buffer.use_device_ptr()
+            self.graphs = {"wm": Graphed(self.wm_update, lambda: True),
+                           "policy": Graphed(self.policy_update, lambda: self.pi_avg is None or self._ema_n > 0)}  # fmt: skip
+            wm_update, policy_update = self.graphs["wm"], self.graphs["policy"]
+        else:
+            self.graphs = None
+            wm_update, policy_update = self.wm_update, self.policy_update
         t_start, t_log, step_acc = time.time() - self.wall_offset, time.time(), 0.0
         agg = {"wm": [], "wm8": [], "wmt": [], "pi": [], "v": [], "ir": [], "gn": [], "surv": [], "clip": []}
         start_it = self.it
         for it in range(start_it, start_it + num_learning_iterations):
             lr = self.lr_at(it)
-            for o in (self.opt_wm, self.opt_pi, self.opt_v):
-                for g in o.param_groups:
-                    g["lr"] = lr
+            pi_mult = c.pi_lr_mult  # lr_decay_ret: ramps to 1 after the trigger
+            if self._decay_at is not None:
+                pi_mult = c.pi_lr_mult + (1.0 - c.pi_lr_mult) * min(1.0, (it - self._decay_at) / max(c.lr_decay_len, 1))
+            for o, k in ((self.opt_wm, 1.0), (self.opt_pi, pi_mult), (self.opt_v, 1.0)):
+                set_lr(o, lr * k)
             step_acc += 1.0 / c.utd
             n = int(step_acc)
             step_acc -= n
+            if c.eprobe_share > 0 and it >= c.eprobe_start and it % c.eprobe_every == 0:
+                self.eprobe_burst(it)
             self.collect(n, stats)
             for _ in range(c.wm_batches):
-                l, e8, et = self.wm_update()
+                l, e8, et = wm_update()
             agg["wm"].append(l), agg["wm8"].append(e8), agg["wmt"].append(et)
             if it >= c.wm_only_iters:
-                pl, vl, ir, gn, surv, clip = self.policy_update()
-                if str(self.device).startswith("cuda"):
+                pl, vl, ir, gn, surv, clip = policy_update()
+                if c.empty_cache and str(self.device).startswith("cuda"):
                     # hand the update's cached blocks back: MuJoCo-Warp allocates outside torch's pool when it steps
                     torch.cuda.empty_cache()
                 agg["pi"].append(pl), agg["v"].append(vl), agg["ir"].append(ir), agg["gn"].append(gn), agg["surv"].append(surv)
                 agg["clip"].append(clip)
             self.it = it + 1
             if self.it % c.log_interval == 0:
-                mean = lambda x: float(sum(float(v) for v in x) / max(len(x), 1))  # noqa: E731
+                mean = lambda x: _nanmean([float(v) for v in x])  # noqa: E731  (collect_graph: NaN = no episode ended)
                 ips = c.log_interval / (time.time() - t_log)
                 t_log = time.time()
                 wall_h = (time.time() - t_start) / 3600
@@ -399,6 +665,16 @@ class SuperMimicRunner:
                        "ep_len": mean(stats["ep_len"]), "ep_ret_norm": mean(stats["ep_ret"]), "term_frac": term_frac,
                        "it_per_s": ips, "lr": lr,
                        "gpu_mem_gb": torch.cuda.max_memory_allocated() / 1e9 if torch.cuda.is_available() else 0.0}  # fmt: skip
+                row.update({"pi_lr": lr * pi_mult, "pi_mult": float(pi_mult), "nonfinite": int(self.nonfinite)})
+                if c.eprobe_share > 0:
+                    row["probe_fail"] = self.probe_fail
+                if c.lr_decay_ret > 0 and self._decay_at is None:
+                    deadline = c.lr_decay_by > 0 and self.it >= c.lr_decay_by
+                    if row["ep_ret_norm"] >= c.lr_decay_ret or deadline:
+                        self._decay_at = self.it
+                        why = (f"training return {row['ep_ret_norm']:.3f} >= {c.lr_decay_ret}" if row["ep_ret_norm"] >= c.lr_decay_ret
+                               else f"deadline lr_decay_by {c.lr_decay_by}")  # fmt: skip
+                        print(f"lr_decay_ret: {why} at it {self.it}: policy LR x{c.pi_lr_mult} -> x1 over {c.lr_decay_len} its", flush=True)
                 if c.state_grad_clip > 0:
                     row["pi_state_clip"] = mean(agg["clip"])
                 if stats["r_terms"]:
@@ -411,14 +687,25 @@ class SuperMimicRunner:
                       f"ep_len {row['ep_len']:.1f} ep_ret {row['ep_ret_norm']:.3f} term {term_frac:.2f} | {ips:.2f} it/s {row['gpu_mem_gb']:.1f} GB", flush=True)  # fmt: skip
                 stats = {k: [] for k in stats}
                 agg = {k: [] for k in agg}
-            if self.log_dir and (self.it % c.save_interval == 0 or it + 1 == start_it + num_learning_iterations):
+            stop = c.max_hours > 0 and time.time() - t_start >= c.max_hours * 3600
+            if self.log_dir and (self.it % c.save_interval == 0 or it + 1 == start_it + num_learning_iterations or stop):
                 self.wall_offset = time.time() - t_start
                 self.save(os.path.join(self.log_dir, f"model_{self.it:06d}.pt"))
+            if stop:
+                print(f"max_hours: {(time.time() - t_start) / 3600:.3f} h of training reached at it {self.it} "
+                      f"(budget {c.max_hours} h): stopping", flush=True)  # fmt: skip
+                break
 
     def save(self, path: str, infos=None):
-        ck = {"wm": self.wm.state_dict(), "pi": self.pi.state_dict(), "critic": self.critic.state_dict(),
+        # "pi" is the deployed policy (the EMA average with pi_ema: what ms-eval and play read), "pi_live" the live one
+        ck = {"wm": self.wm.state_dict(), "pi": self.deployed.state_dict(), "pi_live": self.pi.state_dict(),
+              "pi_avg": self.pi_avg.state_dict() if self.pi_avg is not None else None, "critic": self.critic.state_dict(),
               "opt_wm": self.opt_wm.state_dict(), "opt_pi": self.opt_pi.state_dict(), "opt_v": self.opt_v.state_dict(),
               "iteration": self.it, "wall_time": self.wall_offset, "sim_steps": self.sim_steps, "cfg": asdict(self.cfg),
+              "ctrl": {"decay_at": self._decay_at, "nonfinite": int(self.nonfinite),
+                       "ep_fail": self.ep_fail.cpu() if self.ep_fail is not None else None,
+                       "focus_q": self.cmd.focus_q.cpu() if self.cmd.focus_q is not None else None,
+                       "focus_share": self.cmd.focus_share, "probe_fail": self.probe_fail},
               "saved_at": time.strftime("%Y-%m-%d %H:%M:%S")}  # fmt: skip
         if self.critic_targ is not self.critic:
             ck["critic_targ"] = self.critic_targ.state_dict()
@@ -432,25 +719,53 @@ class SuperMimicRunner:
             for k, v in saved.items():
                 setattr(self.cfg, k, v)
             self._build_networks()
-        self.pi.load_state_dict(ck["pi"], strict=strict)
-        if load_cfg is None or not set(load_cfg) <= {"actor"}:
-            self.wm.load_state_dict(ck["wm"], strict=strict)
-            self.critic.load_state_dict(ck["critic"], strict=strict)
-            if self.critic_targ is not self.critic:
-                self.critic_targ.load_state_dict(ck.get("critic_targ", ck["critic"]), strict=strict)
-            for k in ("opt_wm", "opt_pi", "opt_v"):
-                getattr(self, k).load_state_dict(ck[k])
-            self.it, self.wall_offset, self.sim_steps = ck["iteration"], ck["wall_time"], ck["sim_steps"]
+        if load_cfg is not None and set(load_cfg) <= {"actor"}:  # ms-eval, play: the deployed policy only
+            self.deployed.load_state_dict(ck["pi"], strict=strict)
+            return ck
+        self.pi.load_state_dict(ck.get("pi_live", ck["pi"]), strict=strict)
+        if self.pi_avg is not None:
+            if ck.get("pi_avg") is not None:
+                self.pi_avg.load_state_dict(ck["pi_avg"])
+            else:  # a checkpoint without an average: continue the EMA from its deployed policy
+                self.pi_avg.module.load_state_dict(ck["pi"], strict=strict)
+                self.pi_avg.n_averaged.fill_(1)
+            self._ema_n = int(self.pi_avg.n_averaged)
+        wm_sd = ck["wm"]
+        if "inc_norm.mean" not in wm_sd:  # a checkpoint of the code before inc_norm: its out_norm is the increments' normalizer
+            wm_sd = {**wm_sd, **{f"inc_norm.{k}": wm_sd[f"out_norm.{k}"] for k in ("mean", "var", "count")}}
+        self.wm.load_state_dict(wm_sd, strict=strict)
+        self.critic.load_state_dict(ck["critic"], strict=strict)
+        if self.critic_targ is not self.critic:
+            self.critic_targ.load_state_dict(ck.get("critic_targ", ck["critic"]), strict=strict)
+        self.graphs = None  # cuda_graph: the optimizer states below are new tensors, so a captured update would be stale
+        for k in ("opt_wm", "opt_pi", "opt_v"):
+            o = getattr(self, k)
+            lr_t = [g["lr"] for g in o.param_groups]
+            o.load_state_dict(ck[k])
+            for g, lr0 in zip(o.param_groups, lr_t):  # cuda_graph: keep the device learning-rate tensors (filled)
+                if torch.is_tensor(lr0) and g["lr"] is not lr0:
+                    lr0.fill_(float(g["lr"]))
+                    g["lr"] = lr0
+        self.it, self.wall_offset, self.sim_steps = ck["iteration"], ck["wall_time"], ck["sim_steps"]
+        ctrl = ck.get("ctrl") or {}
+        self._decay_at = ctrl.get("decay_at")
+        self.nonfinite.fill_(int(ctrl.get("nonfinite", 0)))
+        if self.ep_fail is not None and ctrl.get("ep_fail") is not None:
+            self.ep_fail.copy_(ctrl["ep_fail"].to(self.device))
+        if ctrl.get("focus_q") is not None:
+            self.cmd.set_focus(ctrl["focus_q"].to(self.device), ctrl["focus_share"])
+        self.probe_fail = ctrl.get("probe_fail", float("nan"))
         return ck
 
     def get_inference_policy(self, device=None):
-        self.pi.eval()
+        pi = self.deployed
+        pi.eval()
         if device is not None:
-            self.pi.to(device)
+            pi.to(device)
 
         @torch.no_grad()
         def policy(obs) -> torch.Tensor:
-            return self.pi(obs["policy"], obs["goal"])
+            return pi(obs["policy"], obs["goal"])
 
         return policy
 
@@ -494,6 +809,11 @@ class SuperMimicRunner:
                 wb.log({f"train/{k}": v for k, v in row.items()}, step=row["iteration"])
 
         return log
+
+
+def _nanmean(x: list[float]) -> float:
+    x = [v for v in x if v == v]
+    return float(sum(x) / max(len(x), 1))
 
 
 def set_requires_grad(m: nn.Module, flag: bool):

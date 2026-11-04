@@ -27,16 +27,51 @@ class ReplayBuffer:
         }
         self.data = {k: torch.zeros((T, N) + shape, dtype=dt, device=device) for k, (shape, dt) in self.fields.items()}
         self.ptr, self.size = 0, 0
+        # cuda_graph (BlinkMimic): device copies of ptr and size, so that sampling captured in a CUDA graph follows the
+        # write head and the fill level (uniform draws scaled by them instead of randint with host bounds: the same
+        # distribution, another random stream); use_device_ptr() switches them on
+        self.ptr_t = self.size_t = None
+
+    def use_device_ptr(self):
+        self.ptr_t = torch.full((), self.ptr, dtype=torch.long, device=self.device)
+        self.size_t = torch.full((), self.size, dtype=torch.long, device=self.device)
 
     def add(self, tr: dict):
         for k in self.fields:
             self.data[k][self.ptr] = tr[k]
         self.ptr = (self.ptr + 1) % self.T
         self.size = min(self.size + 1, self.T)
+        if self.ptr_t is not None:
+            self.ptr_t.fill_(self.ptr)
+            self.size_t.fill_(self.size)
+
+    def add_device(self, tr: dict):
+        """add() at the device-side write head (collect_graph: capturable). Advances ptr_t / size_t on the device; the
+        host-side ptr / size are advanced by advance_host() after each replay."""
+        row = self.ptr_t.view(1)
+        for k in self.fields:
+            self.data[k].index_copy_(0, row, tr[k].unsqueeze(0).to(self.data[k].dtype))
+        self.ptr_t.copy_((self.ptr_t + 1) % self.T)
+        self.size_t.copy_(torch.clamp(self.size_t + 1, max=self.T))
+
+    def advance_host(self):
+        self.ptr = (self.ptr + 1) % self.T
+        self.size = min(self.size + 1, self.T)
+
+    def _size(self):
+        return self.size_t if self.size_t is not None else self.size
+
+    def _randint(self, lo: int, hi, B: int) -> torch.Tensor:
+        """Uniform integers in [lo, hi), hi a host int or (device-side bounds) a 0-dim tensor."""
+        if self.size_t is None:
+            return torch.randint(lo, hi, (B,), device=self.device)
+        n = hi - lo
+        return lo + torch.minimum((torch.rand(B, device=self.device) * n).long(), n - 1)
 
     def _row(self, age: torch.Tensor) -> torch.Tensor:
         """Map age-ordered time index (0 = oldest) to the storage row."""
-        return (self.ptr - self.size + age) % self.T
+        ptr = self.ptr_t if self.ptr_t is not None else self.ptr
+        return (ptr - self._size() + age) % self.T
 
     def _get(self, age: torch.Tensor, env: torch.Tensor, keys) -> dict:
         rows = self._row(age)
@@ -54,7 +89,7 @@ class ReplayBuffer:
 
     def sample_windows(self, B: int, k: int):
         """k-step windows; returns dict of (B, k, ...) tensors and a validity mask (B, k)."""
-        t0 = torch.randint(0, self.size - k + 1, (B,), device=self.device)
+        t0 = self._randint(0, self._size() - k + 1, B)
         env = torch.randint(0, self.N, (B,), device=self.device)
         ages = t0.unsqueeze(-1) + torch.arange(k, device=self.device)
         out = self._get(ages, env.unsqueeze(-1).expand_as(ages), ("s", "act", "a", "s1", "touch1", "done"))
@@ -65,7 +100,7 @@ class ReplayBuffer:
 
     def sample_starts(self, B: int, hist: int):
         """Start points for imagination plus their observation history (oldest first, clamped to the episode)."""
-        age = torch.randint(max(hist, 1), self.size, (B,), device=self.device)  # row 0 has no previous action
+        age = self._randint(max(hist, 1), self._size(), B)  # row 0 has no previous action
         env = torch.randint(0, self.N, (B,), device=self.device)
         keys = ("s", "act", "touch", "f", "ep_step")
         start = self._get(age, env, keys)

@@ -23,7 +23,9 @@ toes x2, thoracic12, head_neck, humerus, ulna, hand x2).
 * **Observation** (decoder, no history): free-joint height and quaternion, every joint position, the
   free joint's qvel, every joint velocity, muscle length / velocity / force / excitation / activation,
   four foot touch values (ground force on heel and toes), and the root-relative site positions, rotation
-  vectors and 6D velocities (GoalTrajMimic's state-dependent part).
+  vectors and 6D velocities (GoalTrajMimic's state-dependent part). The `-No-Muscle-Obs` task variants leave out
+  muscle length / velocity / force, functions of the joint positions, velocities and activations they still observe;
+  then neither side evaluates the muscle geometry.
 * **Goal** (encoder): GoalTrajMimic's concise lookahead -- the reference's root-relative site positions
   at the current frame and 4 frames 0.2 s apart, with root position and qvel deltas -- and the motion phase.
 * **Reward**: MimicReward with the full-body weights (qpos 0.1, qvel 0.1, root pos 0.1, root vel 0.1,

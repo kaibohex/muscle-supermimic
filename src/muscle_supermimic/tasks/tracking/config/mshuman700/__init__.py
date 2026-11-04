@@ -20,3 +20,13 @@ register_mjlab_task(
     rl_cfg=mshuman700_supermimic_runner_cfg(),
     runner_cls=SuperMimicRunner,
 )
+
+# without the muscle length / velocity / force observations: no muscle geometry on either side (docs/mdp.md)
+for _suffix, _lock in (("", False), ("-Locked-Hands", True)):
+    register_mjlab_task(
+        task_id=f"Mjlab-SuperMimic-Flat-MS-Human-700{_suffix}-No-Muscle-Obs",
+        env_cfg=mshuman700_flat_tracking_env_cfg(lock_hands=_lock, muscle_obs=False),
+        play_env_cfg=mshuman700_flat_tracking_env_cfg(play=True, lock_hands=_lock, muscle_obs=False),
+        rl_cfg=mshuman700_supermimic_runner_cfg(),
+        runner_cls=SuperMimicRunner,
+    )

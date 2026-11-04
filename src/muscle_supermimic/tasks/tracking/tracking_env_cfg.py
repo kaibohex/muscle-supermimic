@@ -28,8 +28,14 @@ TIMESTEP, DECIMATION = 0.002, 5
 REWARD_SCALE = 0.1
 
 
-def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
-    """Create the base tracking task configuration."""
+def make_tracking_env_cfg(muscle_obs: bool = True) -> ManagerBasedRlEnvCfg:
+    """Create the base tracking task configuration.
+
+    Args:
+      muscle_obs: observe muscle length, velocity and force, as MuscleMimic does. They are functions of the joint
+        positions, velocities and muscle activations the decoder observes as well; without them neither the
+        simulator side nor the imagination evaluates the muscle geometry, the largest cost of an imagined step.
+    """
 
     ##
     # Observations
@@ -38,6 +44,8 @@ def make_tracking_env_cfg() -> ManagerBasedRlEnvCfg:
     # MuscleMimic: the decoder sees the full state and the state-dependent part of the goal (no history)
     decoder = ("root_pos", "joint_pos", "root_vel", "joint_vel", "muscle_length", "muscle_velocity", "muscle_force",
                "muscle_excitation", "muscle_activation", "touch", "site_rpos", "site_rangles", "site_rvel")  # fmt: skip
+    if not muscle_obs:
+        decoder = tuple(n for n in decoder if n not in ("muscle_length", "muscle_velocity", "muscle_force"))
     decoder_terms = {name: ObservationTermCfg(func=getattr(mdp, name), params=CMD) for name in decoder}
     # the encoder sees the reference-only part of the goal
     goal_terms = {"motion_goal": ObservationTermCfg(func=mdp.motion_goal, params=CMD)}

@@ -12,3 +12,12 @@ register_mjlab_task(
     rl_cfg=myofullbody_supermimic_runner_cfg(),
     runner_cls=SuperMimicRunner,
 )
+
+# without the muscle length / velocity / force observations: no muscle geometry on either side (docs/mdp.md)
+register_mjlab_task(
+    task_id="Mjlab-SuperMimic-Flat-MyoFullBody-No-Muscle-Obs",
+    env_cfg=myofullbody_flat_tracking_env_cfg(muscle_obs=False),
+    play_env_cfg=myofullbody_flat_tracking_env_cfg(play=True, muscle_obs=False),
+    rl_cfg=myofullbody_supermimic_runner_cfg(),
+    runner_cls=SuperMimicRunner,
+)
