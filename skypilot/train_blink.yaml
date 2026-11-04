@@ -1,0 +1,76 @@
+# One training run of the BlinkMimic recipe (scripts/train_blink.sh) on a cloud RTX 5090, the held-out evaluation of
+# every checkpoint running alongside it on the same GPU, the run directory uploaded to a private Hugging Face dataset.
+#
+#   HF_TOKEN=$(cat ~/.cache/huggingface/token) sky launch -c blink-5090 skypilot/train_blink.yaml --secret HF_TOKEN -i 60 --down -y
+#   sky logs blink-5090                                   # the training line every 250 iterations, the sweeps, the evaluations
+#   ssh blink-5090 tail -3 sky_workdir/logs/train_blink_ms700_s0.out
+#   rsync -az --exclude='*.pt' blink-5090:sky_workdir/logs/rsl_rl/ logs/rsl_rl/   # pull the run directory
+#
+# Another run: --env RUN_NAME=... --env TASK=... --env MOTION=... --env EXTRA_ARGS="...". The cluster tears itself down
+# 60 minutes after the job ends (-i 60 --down); by then the run directory (train_log.csv, eval.csv, params, the
+# checkpoints listed in KEEP_CKPTS) is on the dataset HF_RESULTS_REPO under RUN_NAME/.
+#
+# The machine needs a driver >= 580 (torch 2.14.1's CUDA 13.0 wheels) and ~40 GB of disk. The repo is synced without
+# .git, .venv, logs, data and third_party (.skyignore); setup rebuilds the venv from uv.lock, clones MS-Human-700 at the
+# pinned commit and downloads the retargeted KIT clips.
+
+name: muscle-supermimic-train
+
+resources:
+  infra: runpod
+  accelerators: RTX5090:1
+  disk_size: 60
+
+workdir: .
+
+envs:
+  RUN_NAME: blink_ms700_s0
+  TASK: Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands
+  MOTION: data/mshuman700_kit/kit_kinesis_train.txt
+  TEST_MOTION: data/mshuman700_kit/kit_kinesis_test.txt
+  EXPERIMENT: mshuman700_tracking
+  # the recipe is the preset's; this bounds the run (the published baseline reached 0.83 at iteration 6500 in 4 h)
+  EXTRA_ARGS: "--agent.max-iterations 8000 --agent.seed 0"
+  KEEP_CKPTS: "model_002000.pt model_004000.pt model_006000.pt model_008000.pt"
+  # 1: evaluate every checkpoint as it appears, on the training GPU (costs the training some time); 0: only after
+  # training, when every checkpoint is evaluated anyway
+  EVAL_DURING: "1"
+  # 1: run scripts/bench_collect.sh first, so that a fresh machine's compilation is not counted in a --agent.max-hours budget
+  PREWARM: "0"
+  HF_RESULTS_REPO: YOUR_HF_USER/supermimic-runs
+  KIT_REPO: YOUR_HF_USER/mshuman700-kit
+  MSHUMAN_COMMIT: 2d686957aefd5739cf4d2859a6acfd94c8f84400
+
+secrets:
+  HF_TOKEN: null  # read access to KIT_REPO, write access to HF_RESULTS_REPO
+
+setup: |
+  set -euo pipefail
+  cd ~/sky_workdir
+  nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
+  DRV=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1 | cut -d. -f1)
+  if [ "$DRV" -lt 580 ]; then echo "driver $DRV is older than 580: torch 2.14.1 (CUDA 13.0 wheels) will not run here"; exit 1; fi
+  command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH=$HOME/.local/bin:$PATH
+  uv python install 3.12
+  uv sync --frozen --no-dev
+  uv pip install -q huggingface_hub
+  if [ ! -d third_party/MS-Human-700/.git ]; then
+    rm -rf third_party/MS-Human-700
+    git clone -q https://github.com/LNSGroup/MS-Human-700.git third_party/MS-Human-700
+    git -C third_party/MS-Human-700 checkout -q $MSHUMAN_COMMIT
+  fi
+  if [ ! -f data/mshuman700_kit/kit_kinesis_train.txt ]; then
+    rm -rf /tmp/kit && mkdir -p /tmp/kit data
+    curl -fsSL --retry 5 -H "Authorization: Bearer $HF_TOKEN" -o /tmp/kit/kit.tgz \
+      https://huggingface.co/datasets/$KIT_REPO/resolve/main/mshuman700_kit.tgz
+    tar xzf /tmp/kit/kit.tgz -C /tmp/kit
+    rm -rf data/mshuman700_kit
+    mv "$(dirname "$(find /tmp/kit -name kit_kinesis_train.txt | head -1)")" data/mshuman700_kit
+    rm -rf /tmp/kit
+  fi
+  echo "clips: $(wc -l < $MOTION) train, $(wc -l < $TEST_MOTION) test"
+  MUJOCO_GL=disable .venv/bin/python -c "import torch, mujoco, muscle_supermimic.tasks; print('torch', torch.__version__, torch.cuda.get_device_name(0), 'mujoco', mujoco.__version__)"
+
+run: |
+  bash scripts/run_trial.sh  # the run, its evaluation and the upload (also started by hand: see the script)

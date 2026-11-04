@@ -1,0 +1,17 @@
+#!/bin/bash
+# The t7 configuration on one GPU (MS-Human-700 locked hands without muscle observations, 4096 envs, the BlinkMimic
+# recipe with both CUDA-graph options): seconds per iteration of collection and updates (scripts/bench_iteration.py).
+# Usage, on the training machine:  bash scripts/bench_collect.sh [collect_graph values, default "true"]
+set -u
+cd ~/sky_workdir
+export MUJOCO_GL=disable PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+SETS="pi_batch=2048 wm_batches=5 wm_hidden=1024,1024,1024 pi_opt=muon wm_opt=muon fused_adam=true no_sync=true pi_ema=0.995 empty_cache=false wm_structured=true wm_mirror=0.5 value_clip=true lr=4e-4 cuda_graph=true"
+for CG in ${1:-true}; do
+  echo "=== collect_graph=$CG $(date -u +%T) ==="
+  .venv/bin/python scripts/bench_iteration.py --task Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands-No-Muscle-Obs \
+    --motion-file data/mshuman700_kit/kit_kinesis_train.txt --num-envs 4096 --warmup 8 --iters 20 \
+    --env-set bin_fix=true fail_reset=0.3 --set $SETS collect_graph=$CG 2>&1 \
+    | grep -v "Module \|FutureWarning\|warnings.warn\|^\[INFO\]\||\|^+--" | tail -9
+  nvidia-smi --query-gpu=memory.used --format=csv,noheader
+done
+echo "=== bench done $(date -u +%T) ==="
