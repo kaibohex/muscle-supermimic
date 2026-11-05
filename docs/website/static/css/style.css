@@ -97,18 +97,22 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .hero { background: var(--bg-hero); padding: 2.75rem 1rem 2rem; text-align: center; border-bottom: 1px solid var(--border); }
 .title { font-size: clamp(1.6rem, 4vw, 2.4rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; margin-bottom: 0.6rem; font-family: var(--font-mono); }
 .subtitle { font-size: clamp(1.05rem, 2.2vw, 1.3rem); font-weight: 400; color: var(--text-muted); max-width: 40rem; margin: 0 auto 0.9rem; line-height: 1.4; }
-/* "4 hours" struck through by a diagonal line drawn in, then "13 min" fades in */
+/* "4 hours" struck through by a diagonal line drawn in, then "14 min" fades in and is struck through in turn,
+   then "9 min" fades in */
 .speedup { white-space: nowrap; }
 .speedup del { position: relative; display: inline-block; text-decoration: none; color: var(--text-light); }
 .speedup del::after { content: ''; position: absolute; left: -0.1em; right: -0.1em; top: 55%; height: 2px; border-radius: 1px;
   background: var(--series-2); transform: rotate(-12deg); clip-path: inset(0 0 0 0);
   animation: speedup-strike 0.45s ease-out 0.6s both; }
+.speedup del.step { margin-left: 0.2em; animation: speedup-in 0.4s ease-out 1.05s both, speedup-dim 0.45s ease-out 1.65s both; }
+.speedup del.step::after { animation-delay: 1.65s; }
 .speedup ins { display: inline-block; margin-left: 0.2em; text-decoration: none; font-weight: 600; color: var(--text);
-  animation: speedup-in 0.4s ease-out 1.05s both; }
+  animation: speedup-in 0.4s ease-out 2.15s both; }
 .speedup ins sup { font-size: 0.6em; font-weight: 500; margin-left: 1px; }
 @keyframes speedup-strike { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes speedup-in { from { opacity: 0; transform: translateY(0.25em); } to { opacity: 1; transform: none; } }
-@media (prefers-reduced-motion: reduce) { .speedup del::after, .speedup ins { animation: none; } }
+@keyframes speedup-dim { from { color: var(--text); } to { color: var(--text-light); } }
+@media (prefers-reduced-motion: reduce) { .speedup del, .speedup del::after, .speedup ins { animation: none; } }
 .subtitle-note { font-size: 0.78rem; color: var(--text-light); max-width: 40rem; margin: -0.5rem auto 1rem; line-height: 1.45; }
 .author-list { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem 1.5rem; margin-bottom: 0.45rem; font-size: 1.05rem; }
 .author { font-weight: 500; }
