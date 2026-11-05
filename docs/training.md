@@ -88,6 +88,15 @@ supermimic_vibed) trains the Unitree G1 on 40 LAFAN1 clips to a normalized retur
 one RTX 4090, from SuperMimic's ~40: about 6x fewer iterations and 2.3x less time per iteration. Its changes are
 being ported here as runner flags, every one off by default, so `uv run train` without them is the runner above.
 
+**Current recipe and result (2026-11-05).** `scripts/train_blink.sh` sets the table below plus 1024 environments,
+both CUDA-graph options with the collection overlapped (`--agent.overlap-collect True`), no imagination
+rematerialization and Beta exploration noise (`--agent.action-noise-dist beta`), at a 1x policy learning rate. On
+MS-Human-700 with locked hands and no muscle observations, one RTX 5090 with warm compile caches, two seeds reach a
+held-out return of 0.83 at 8.5 minutes, 0.90 at 10-11 minutes and track all 108 test clips from about 9.5 minutes
+(trials 30 and 31; the published baseline: 0.83 after 4.3 hours). A cold machine adds about 9.5 minutes of
+compilation unless it loads a saved compile cache (below). A higher learning rate (a 2x policy phase, or a 6e-4
+base rate) stalls about half of the runs at 0.3-0.4, so keep 1x; decide recipe changes on at least two seeds.
+
 **Ported so far** (`scripts/train_blink.sh <task> <motion-file> [train flags]` sets all of it):
 
 | change | flag | from |
