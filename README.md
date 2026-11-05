@@ -24,6 +24,15 @@ the excitation of every muscle at 100 Hz to follow motion-capture clips.
 - **Motion data for both.** MuscleMimic's retargeted AMASS (KIT) clips drive MyoFullBody as they are;
   `ms-retarget-myofullbody` carries them over to MS-Human-700.
 
+## News
+
+- **[2026-11]** Training sped up from 4 hours to 14 minutes: MS-Human-700 passes a normalized return of 0.83 on the 108
+  held-out clips after 14 minutes on one RTX 5090, with the compile caches warmed up. Code coming soon.
+- **[2026-10]** Checkpoints of both bodies on [Hugging Face](https://huggingface.co/Beanpow/muscle-supermimic), and an
+  [interactive demo](https://muscle-supermimic.beanpow.top/demo/) on the [project page](https://muscle-supermimic.beanpow.top/)
+  that runs both policies in the browser on 32 held-out clips.
+- **[2026-10]** First release: SuperMimic tracking on MS-Human-700 and MyoFullBody.
+
 ## Status
 
 Both bodies train on MuscleMimic's KIT split (972 training clips) with the defaults: 4096 environments on one RTX
@@ -108,9 +117,26 @@ The tasks register through mjlab's `mjlab.tasks` entry point with the SuperMimic
 | `third_party/MS-Human-700/` | the upstream MS-Human-700 model (git submodule) |
 | `tests/` | FK, muscles and activation vs MuJoCo, retargeting, simulator vs analytic terms, a tiny end-to-end training run |
 
+## Citation
+
+If you use this code, please cite:
+
+```bibtex
+@misc{he2026musclesupermimic,
+  title        = {{muscle-supermimic}: Whole-Body Motion Tracking for
+                  Musculoskeletal Humanoids with One Differentiable
+                  World Model},
+  author       = {He, Kaibo and Bakowicz, Maciej and Zhou, Shihe and
+                  Sui, Yanan and Radhakrishnan, Dhanush},
+  year         = {2026},
+  howpublished = {\url{https://github.com/kaibohex/muscle-supermimic}},
+  note         = {Project page: \url{https://muscle-supermimic.beanpow.top}}
+}
+```
+
 ## Related work
 
-It builds on the following works:
+It builds on the following works; please cite them as well:
 
 - SuperMimic: Q. Liao et al., *SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable
   World Model*, CoRL 2026, [arXiv:2610.28480](https://arxiv.org/abs/2610.28480).

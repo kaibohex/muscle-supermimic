@@ -1,4 +1,4 @@
-// muscle-supermimic project page: lazy video playback, the MS-Human-700 clip gallery, and the charts
+// muscle-supermimic project page: lazy video playback, BibTeX copy, the MS-Human-700 clip gallery, and the charts
 // (SVG drawn from window.CHART_DATA, re-drawn on resize; crosshair tooltips; the time axis shows training
 // iterations while hovered, or tapped on a touch screen).
 
@@ -309,4 +309,12 @@ function liveViewer() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => { charts(); gallery(); lazyVideos(); liveViewer(); });
+function copyButtons() {
+  document.querySelectorAll('.copy-btn').forEach((b) => b.addEventListener('click', async () => {
+    const text = document.getElementById(b.dataset.target).textContent;
+    try { await navigator.clipboard.writeText(text); b.textContent = 'Copied'; } catch { b.textContent = 'Select and copy'; }
+    setTimeout(() => (b.textContent = 'Copy'), 1500);
+  }));
+}
+
+document.addEventListener('DOMContentLoaded', () => { charts(); gallery(); lazyVideos(); liveViewer(); copyButtons(); });
