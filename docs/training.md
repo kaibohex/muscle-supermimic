@@ -73,6 +73,14 @@ uv run train Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands --env.commands.moti
 the simulator-side pieces stay eager there (`MotionCommandCfg.compile` is turned off automatically; the
 runner's own compiled pieces are unaffected).
 
+**Compilation on a new machine.** The runner's compiled pieces and CUDA graphs cost a cold machine about 9 minutes
+before the first policy update (trial t17: the first capture at 10.6 minutes of the training clock instead of about
+1), which a `--agent.max-hours` budget counts. `scripts/compile_cache.sh save <name>` packs a warm machine's caches
+(torch Inductor / AOTAutograd / Triton, Warp's kernels, the CUDA JIT cache) to the results dataset on Hugging Face;
+`COMPILE_CACHE=<name>` in `skypilot/train_blink.yaml` / `scripts/run_trial.sh` loads them before training, outside
+its clock. Save them from a machine that has trained the same configuration with the same code and lockfile: the
+caches key on all three.
+
 ## BlinkMimic recipe
 
 [BlinkMimic](https://github.com/fuyichen0725/blinkmimic) (Fuyi Chen, 2026; built on InstantTrack and

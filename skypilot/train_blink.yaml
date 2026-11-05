@@ -39,6 +39,9 @@ envs:
   PREWARM: "0"
   # minutes: the evaluation leaves out checkpoints saved earlier in training (every clip still fails there)
   EVAL_SKIP_MIN: "0"
+  # a compile cache saved with scripts/compile_cache.sh save <name> (HF_RESULTS_REPO/compile_cache/<name>.tar.zst),
+  # loaded before training so that a new machine does not compile inside the training clock; "" compiles
+  COMPILE_CACHE: ""
   HF_RESULTS_REPO: YOUR_HF_USER/supermimic-runs
   KIT_REPO: YOUR_HF_USER/mshuman700-kit
   MSHUMAN_COMMIT: 2d686957aefd5739cf4d2859a6acfd94c8f84400

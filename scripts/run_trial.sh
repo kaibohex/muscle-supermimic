@@ -11,6 +11,8 @@
 : "${HF_RESULTS_REPO:=YOUR_HF_USER/supermimic-runs}" "${PREWARM:=0}"
 # EVAL_SKIP_MIN: leave out the checkpoints of the first N minutes of training (all clips still fail there)
 : "${EVAL_SKIP_MIN:=0}"
+# COMPILE_CACHE: load this saved compile cache (scripts/compile_cache.sh) before training, outside its clock
+: "${COMPILE_CACHE:=}"
 set -uo pipefail
 cd ~/sky_workdir
 export PATH=$HOME/.local/bin:$PATH MUJOCO_GL=disable PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -26,6 +28,10 @@ if [ "$EVAL_DURING" = "1" ]; then
       --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN --watch > logs/eval_$RUN_NAME.out 2>&1
   ) &
   EVAL_PID=$!
+fi
+if [ -n "$COMPILE_CACHE" ]; then
+  echo "== compile cache $COMPILE_CACHE $(date -u +%FT%TZ)"
+  bash scripts/compile_cache.sh load "$COMPILE_CACHE" || echo "compile_cache: load failed, compiling from scratch"
 fi
 if [ "${PREWARM:-0}" = "1" ]; then
   # a fresh machine compiles for ~14 minutes on the first iterations, which would count against a wall-clock budget
