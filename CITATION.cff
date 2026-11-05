@@ -1,0 +1,42 @@
+cff-version: 1.2.0
+message: "If you use this code, please cite it as below."
+type: software
+title: "muscle-supermimic: Whole-Body Motion Tracking for Musculoskeletal Humanoids with One Differentiable World Model"
+authors:
+  - family-names: He
+    given-names: Kaibo
+  - family-names: Bakowicz
+    given-names: Maciej
+  - family-names: Zhou
+    given-names: Shihe
+  - family-names: Sui
+    given-names: Yanan
+  - family-names: Radhakrishnan
+    given-names: Dhanush
+repository-code: "https://github.com/kaibohex/muscle-supermimic"
+url: "https://muscle-supermimic.beanpow.top"
+license: Apache-2.0
+version: 0.1.0
+keywords:
+  - musculoskeletal humanoid
+  - motion tracking
+  - world model
+  - differentiable simulation
+  - MuJoCo
+preferred-citation:
+  type: generic
+  title: "muscle-supermimic: Whole-Body Motion Tracking for Musculoskeletal Humanoids with One Differentiable World Model"
+  authors:
+    - family-names: He
+      given-names: Kaibo
+    - family-names: Bakowicz
+      given-names: Maciej
+    - family-names: Zhou
+      given-names: Shihe
+    - family-names: Sui
+      given-names: Yanan
+    - family-names: Radhakrishnan
+      given-names: Dhanush
+  year: 2026
+  url: "https://github.com/kaibohex/muscle-supermimic"
+  notes: "Project page: https://muscle-supermimic.beanpow.top"
