@@ -65,16 +65,20 @@ class MotionCommand(CommandTerm):
         self.heads = TrackingHeads(self.kin, self.motion, self.geo, cfg.lookahead, cfg.stride)
         # the shared pieces of each step's terms in one compiled call: observations with muscle geometry (if a term
         # observes muscle length, velocity or force), rewards and terminations without (eager, they launch tens of
-        # thousands of small kernels per step). Not on sm_120 (RTX 5090): Triton 3.8 hits an LLVM assertion compiling
-        # the no-grad tendon-wrap kernels there.
+        # thousands of small kernels per step). On sm_120 (RTX 50xx) Triton 3.8 hits an LLVM assertion compiling the
+        # no-grad tendon-wrap kernels, so a precompute with the muscle geometry stays eager there.
         muscle_terms = (TrackingHeads.muscle_length, TrackingHeads.muscle_velocity, TrackingHeads.muscle_force)
         self.observes_muscles = any(getattr(t.func, "analytic", None) in muscle_terms
                                     for g in env.cfg.observations.values() if g is not None
                                     for t in g.terms.values() if t is not None)  # fmt: skip
         cuda = str(self.device).startswith("cuda")
         sm120 = cuda and torch.cuda.get_device_capability(self.device) >= (12, 0)
-        comp = torch.compile if cfg.compile and cuda and not sm120 else (lambda fn: fn)
-        self._shared_obs = comp(lambda S: self.heads.precompute(S, muscles=self.observes_muscles))
+        comp = torch.compile if cfg.compile and cuda else (lambda fn: fn)
+        eager = lambda fn: fn  # noqa: E731
+        # on sm_120 only the muscle geometry (the tendon-wrap kernels) fails to compile: the precompute without it is
+        # compiled there too (the No-Muscle-Obs tasks' observation and every transition)
+        self._shared_obs = (eager if sm120 and self.observes_muscles else comp)(
+            lambda S: self.heads.precompute(S, muscles=self.observes_muscles))  # fmt: skip
         self._shared_transition = comp(lambda S: self.heads.precompute(S, muscles=False))
         self.touch_sensor = env.scene[cfg.touch_sensor_name]
 
@@ -357,8 +361,8 @@ class MotionCommandCfg(MjlabMotionCommandCfg):
     """Share of the resets sent one bin before recent termination points (InstantTrack's anti-forgetting of hard
     clips): the per-bin termination rate, which decays as bins are mastered, spread to each bin's predecessor. 0: off."""
     compile: bool = True
-    """torch.compile the kinematics and muscle geometry the terms share each step (CUDA only, and not on sm_120,
-    where Triton 3.8 fails to compile them)."""
+    """torch.compile the kinematics and muscle geometry the terms share each step (CUDA only; on sm_120, where Triton
+    3.8 fails to compile the muscle geometry, only the precompute without it)."""
     resampling_time_range: tuple[float, float] = (1.0e9, 1.0e9)
 
     def __post_init__(self):
