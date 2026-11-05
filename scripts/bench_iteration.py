@@ -44,6 +44,8 @@ def main():
     ap.add_argument("--env-set", nargs="*", default=[], metavar="KEY=VALUE", help="motion command cfg overrides, e.g. bin_fix=true")
     ap.add_argument("--sim-set", nargs="*", default=[], metavar="KEY=VALUE", help="MuJoCo solver cfg overrides, e.g. iterations=50")
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
+    ap.add_argument("--profile", type=int, default=0,
+                    help="after the timing, profile this many more iterations (best without CUDA graphs) and print the top CUDA kernels")
     args = ap.parse_args()
 
     import mjlab.tasks  # noqa: F401  (registers the tasks, ours included via the entry point)
@@ -147,6 +149,17 @@ def main():
             print(f"{k:10s} {v / args.iters:14.3f} {v / total:7.1%}")
     if c.overlap_collect or c.overlap_wm:
         print(f"{n_overlapped} of {args.iters} timed iterations ran overlapped (collection and/or world-model updates)")
+    if args.profile > 0 and cuda:
+        from torch.profiler import ProfilerActivity, profile
+
+        with profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
+            for _ in range(args.profile):
+                runner.collect(int(round(1.0 / c.utd)), stats)
+                for _ in range(c.wm_batches):
+                    wm_update()
+                policy_update()
+            sync()
+        print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=30, max_name_column_width=70))
     print(f"{'total':10s} {total / args.iters:14.3f} {'':7s}   ({args.iters / total:.3f} it/s; collection = {sim_steps / args.iters:.1f} "
           f"sim steps of {N} envs per iteration; torch peak {mem:.1f} GB)")  # fmt: skip
 

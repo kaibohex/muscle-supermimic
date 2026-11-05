@@ -9,8 +9,13 @@
 : "${EXPERIMENT:=mshuman700_tracking}" "${EXTRA_ARGS:=--agent.max-iterations 8000 --agent.seed 0}"
 : "${KEEP_CKPTS:=model_002000.pt model_004000.pt model_006000.pt model_008000.pt}" "${EVAL_DURING:=1}"
 : "${HF_RESULTS_REPO:=YOUR_HF_USER/supermimic-runs}" "${PREWARM:=0}"
-# EVAL_SKIP_MIN: leave out the checkpoints of the first N minutes of training (all clips still fail there)
-: "${EVAL_SKIP_MIN:=0}"
+# EVAL_SKIP_MIN: leave out the checkpoints of the first N minutes of training (all clips still fail there; with the
+# current recipe the first 0.83 comes at ~8.5 min, so keep N well below that)
+: "${EVAL_SKIP_MIN:=5}"
+# EVAL_BATCH: checkpoints evaluated at once (ms-eval --batch; K x C worlds in one env, about the time of one)
+: "${EVAL_BATCH:=24}"
+# MAX_HOURS: the training budget (--agent.max-hours, the runner's clock); EXTRA_ARGS can still override it
+: "${MAX_HOURS:=0.3333}"
 # COMPILE_CACHE: load this saved compile cache (scripts/compile_cache.sh) before training, outside its clock
 : "${COMPILE_CACHE:=}"
 set -uo pipefail
@@ -25,7 +30,7 @@ if [ "$EVAL_DURING" = "1" ]; then
   ( sleep 300
     RUN=$(ls -dt logs/rsl_rl/$EXPERIMENT/*_$RUN_NAME 2>/dev/null | head -1)
     [ -n "$RUN" ] && exec .venv/bin/python -m muscle_supermimic.tasks.tracking.scripts.evaluate --task $TASK --run-dir $RUN \
-      --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN --watch > logs/eval_$RUN_NAME.out 2>&1
+      --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN --batch $EVAL_BATCH --watch > logs/eval_$RUN_NAME.out 2>&1
   ) &
   EVAL_PID=$!
 fi
@@ -40,7 +45,7 @@ if [ "${PREWARM:-0}" = "1" ]; then
   bash scripts/bench_collect.sh true 2>&1 | grep -E "^collect |^total |==="
 fi
 echo "== train $RUN_NAME $(date -u +%FT%TZ)"
-bash scripts/train_blink.sh $TASK $MOTION --agent.run-name $RUN_NAME $EXTRA_ARGS 2>&1 \
+bash scripts/train_blink.sh $TASK $MOTION --agent.run-name $RUN_NAME --agent.max-hours $MAX_HOURS $EXTRA_ARGS 2>&1 \
   | tee logs/train_$RUN_NAME.out | grep --line-buffered -iE "^\s*it [0-9]*[05]00 |^eprobe|^wm_mirror|^lr_decay|^collect_graph|^max_hours|error|traceback|missing|usage|loading|cuda"
 TRAIN_STATUS=${PIPESTATUS[0]}
 echo "== train exit $TRAIN_STATUS $(date -u +%FT%TZ)"
@@ -49,7 +54,7 @@ RUN=$(ls -dt logs/rsl_rl/$EXPERIMENT/*_$RUN_NAME 2>/dev/null | head -1)
 if [ -n "$RUN" ]; then
   if [ -n "$EVAL_PID" ]; then sleep 120; kill $EVAL_PID 2>/dev/null; fi  # let the watcher finish the last checkpoint, then evaluate any it missed
   .venv/bin/python -m muscle_supermimic.tasks.tracking.scripts.evaluate --task $TASK --run-dir $RUN \
-    --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN >> logs/eval_$RUN_NAME.out 2>&1
+    --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN --batch $EVAL_BATCH >> logs/eval_$RUN_NAME.out 2>&1
   grep "^\[eval\]" logs/eval_$RUN_NAME.out | tail -5
   echo "== upload $RUN -> $HF_RESULTS_REPO/$RUN_NAME $(date -u +%FT%TZ)"
   INC=(--include "*.csv" --include "*.json" --include "params/*")  # hf upload takes one pattern per --include

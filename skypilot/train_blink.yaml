@@ -37,8 +37,13 @@ envs:
   EVAL_DURING: "1"
   # 1: run scripts/bench_collect.sh first, so that a fresh machine's compilation is not counted in a --agent.max-hours budget
   PREWARM: "0"
-  # minutes: the evaluation leaves out checkpoints saved earlier in training (every clip still fails there)
-  EVAL_SKIP_MIN: "0"
+  # minutes: the evaluation leaves out checkpoints saved earlier in training (with the 2026-11-05 recipe the first 0.83
+  # comes at ~8.5 min and every clip still fails before ~5 min)
+  EVAL_SKIP_MIN: "5"
+  # checkpoints evaluated at once (ms-eval --batch): K x C worlds in one env take about the time of one checkpoint
+  EVAL_BATCH: "24"
+  # the training budget in hours of the runner's clock (20 minutes; the first 0.83 comes at ~8.5 min)
+  MAX_HOURS: "0.3333"
   # a compile cache saved with scripts/compile_cache.sh save <name> (HF_RESULTS_REPO/compile_cache/<name>.tar.zst),
   # loaded before training so that a new machine does not compile inside the training clock; "" compiles
   COMPILE_CACHE: ""
