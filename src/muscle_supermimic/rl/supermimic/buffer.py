@@ -31,10 +31,28 @@ class ReplayBuffer:
         # write head and the fill level (uniform draws scaled by them instead of randint with host bounds: the same
         # distribution, another random stream); use_device_ptr() switches them on
         self.ptr_t = self.size_t = None
+        # overlap_collect: sampling reads a snapshot of the write head and fill level (taken by snapshot() while no
+        # collection runs), so that updates running concurrently with a collection never see its writes; the fill
+        # level is capped at T - reserve, keeping the next `reserve` rows (the ones being overwritten) out of reach
+        self.sample_ptr_t = self.sample_size_t = None
+        self.reserve = 0
 
     def use_device_ptr(self):
         self.ptr_t = torch.full((), self.ptr, dtype=torch.long, device=self.device)
         self.size_t = torch.full((), self.size, dtype=torch.long, device=self.device)
+
+    def use_sample_snapshot(self, reserve: int):
+        """Sample from snapshot() instead of the live write head (needs use_device_ptr). `reserve`: the most steps a
+        collection writes between two snapshots."""
+        assert self.ptr_t is not None and 0 < reserve < self.T
+        self.sample_ptr_t, self.sample_size_t = self.ptr_t.clone(), self.size_t.clone()
+        self.reserve = reserve
+        self.snapshot()
+
+    def snapshot(self):
+        """The write head and fill level that sampling reads until the next snapshot (on the current stream)."""
+        self.sample_ptr_t.copy_(self.ptr_t)
+        self.sample_size_t.copy_(torch.clamp(self.size_t, max=self.T - self.reserve))
 
     def add(self, tr: dict):
         for k in self.fields:
@@ -59,6 +77,8 @@ class ReplayBuffer:
         self.size = min(self.size + 1, self.T)
 
     def _size(self):
+        if self.sample_size_t is not None:
+            return self.sample_size_t
         return self.size_t if self.size_t is not None else self.size
 
     def _randint(self, lo: int, hi, B: int) -> torch.Tensor:
@@ -70,7 +90,7 @@ class ReplayBuffer:
 
     def _row(self, age: torch.Tensor) -> torch.Tensor:
         """Map age-ordered time index (0 = oldest) to the storage row."""
-        ptr = self.ptr_t if self.ptr_t is not None else self.ptr
+        ptr = self.sample_ptr_t if self.sample_ptr_t is not None else self.ptr_t if self.ptr_t is not None else self.ptr
         return (ptr - self._size() + age) % self.T
 
     def _get(self, age: torch.Tensor, env: torch.Tensor, keys) -> dict:

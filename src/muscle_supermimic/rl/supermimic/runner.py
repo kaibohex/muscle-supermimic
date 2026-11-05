@@ -89,34 +89,66 @@ class ClipRowGrad(torch.autograd.Function):
 class Graphed:
     """Run ``fn`` eagerly until ``ready()``; then eagerly on a side stream for ``warmup`` calls, capture it as a CUDA
     graph on the next call and replay it from then on (BlinkMimic). Each call is one update; the outputs are cloned
-    out of the graph's pool."""
+    out of the graph's pool. ``own``: captured on its own stream (its own cuBLAS workspace) with its own random state,
+    so that it can replay concurrently with other graphs (overlap_wm)."""
 
-    def __init__(self, fn, ready, warmup: int = 3):
+    def __init__(self, fn, ready, warmup: int = 3, own: bool = False):
         self.fn, self.ready, self.warmup, self.calls, self.graph, self.out = fn, ready, warmup, 0, None, None
+        # one warm-up stream for all warm-up calls: the allocator caches freed blocks per stream, so a new stream per
+        # call would keep a copy of every call's activations (without remat_imagination, GBs each) until the capture
+        self.side = None
+        self.own, self.capture_stream, self.rng = own, None, None
+        if own:
+            self.capture_stream = torch.cuda.Stream()
+            self.rng = torch.cuda.default_generators[torch.cuda.current_device()].clone_state()
+            self.rng.manual_seed(int(torch.randint(0, 2**62, ())))
 
-    def __call__(self):
+    def __call__(self, record=None):
+        """``record``: a stream the outputs are also used on (when called on another one)."""
         if self.graph is None and not self.ready():
             return self.fn()
         self.calls += 1
         if self.calls <= self.warmup:
-            side = torch.cuda.Stream()
-            side.wait_stream(torch.cuda.current_stream())
-            with torch.cuda.stream(side):
+            if self.side is None:
+                self.side = torch.cuda.Stream()
+            self.side.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(self.side):
                 out = self.fn()
-            torch.cuda.current_stream().wait_stream(side)
+            torch.cuda.current_stream().wait_stream(self.side)
             return out
         if self.graph is None:
             torch.cuda.synchronize()
             torch.cuda.empty_cache()  # return the eager phase's cached blocks before the graph takes its own pool
             t0 = time.time()
             self.graph = torch.cuda.CUDAGraph()
-            with torch.cuda.graph(self.graph):
-                self.out = self.fn()
+            # autograd nodes of the eager calls (the first ones run on the default stream) keep a reference to the
+            # stream they ran on, which the capture refuses for the default stream (seen with remat_imagination=False
+            # and compile): the device is synchronized here, so redirecting them to the capturing stream is safe
+            override = getattr(torch.autograd.graph, "set_override_stale_capture_stream", None)
+            if override is not None:
+                override(True)
+            gen = orig = None
+            if self.rng is not None:
+                gen = torch.cuda.default_generators[torch.cuda.current_device()]
+                orig = gen.graphsafe_get_state()
+                gen.graphsafe_set_state(self.rng)
+            try:
+                with torch.cuda.graph(self.graph, stream=self.capture_stream):
+                    self.out = self.fn()
+            finally:
+                if override is not None:
+                    override(False)
+                if gen is not None:
+                    gen.graphsafe_set_state(orig)
             torch.cuda.synchronize()
             print(f"cuda_graph: captured {self.fn.__name__} in {time.time() - t0:.1f} s, "
                   f"{torch.cuda.memory_reserved() / 2**30:.1f} GB reserved", flush=True)  # fmt: skip
         self.graph.replay()
-        return tuple(x.clone() for x in self.out)
+        out = tuple(x.clone() for x in self.out)
+        if record is not None:
+            for x in out:
+                x.record_stream(record)
+        return out
 
 
 def set_lr(opt, value: float):
@@ -189,6 +221,10 @@ class SuperMimicRunner:
                              substeps=self.uenv.cfg.decimation).to(dev)  # fmt: skip
         self.pi = Policy(self.obs_policy.dim, self.obs_goal.dim, self.nm, c.enc_hidden, c.dec_hidden, c.latent_dim,
                          c.init_excitation).to(dev)  # fmt: skip
+        # overlap_wm: imagination steps a copy of the world model taken at the start of each iteration (sync_wm_imag),
+        # so that the world-model updates can run concurrently with the policy update
+        self.wm_imag = copy.deepcopy(self.wm).requires_grad_(False) if c.overlap_wm else self.wm
+        self._wm_sync = None
         self.critic = Critic(self.obs_policy.dim + self.obs_goal.dim + self.heads.critic_extras_dim(), c.critic_hidden).to(dev)
         self.critic_targ = self.critic
         if c.critic_target_alpha > 0:
@@ -274,8 +310,8 @@ class SuperMimicRunner:
         a = self.pi(obs, goal)
         x = torch.cat((obs, goal, self.heads.critic_extras(ctx)), -1).detach()
         act1, _ = self.muscle.step(S[6], a)
-        body1, touch_n = self.wm.step(S, S[6], act1)
-        S1 = body1 + (act1, self.wm.touch(touch_n))
+        body1, touch_n = self.wm_imag.step(S, S[6], act1)
+        S1 = body1 + (act1, self.wm_imag.touch(touch_n))
         f1 = f + 1
         return S1, a, self.obs_policy.push(hist, StepCtx(S1, f1, a)), f1, x
 
@@ -361,7 +397,8 @@ class SuperMimicRunner:
         with torch.no_grad():
             S_h = unflatten_body(h["s"], self.nq) + (h["act"], h["touch"])
             hist = self.obs_policy.init_history(StepCtx(S_h, h["f"], h["last_a"]))
-        set_requires_grad(self.wm, False)
+        if self.wm_imag is self.wm:  # (overlap_wm: the copy never needs gradients, and the original trains concurrently)
+            set_requires_grad(self.wm, False)
         set_requires_grad(self.critic, False)
         S0 = S
         Ss, As, Aps, Fs = [], [], [], []
@@ -423,7 +460,8 @@ class SuperMimicRunner:
             self.opt_pi.step()
         self.ema_update()
         clip_frac = torch.stack(clipped).mean() if clipped else torch.zeros((), device=dev)
-        set_requires_grad(self.wm, True)
+        if self.wm_imag is self.wm:
+            set_requires_grad(self.wm, True)
         set_requires_grad(self.critic, True)
         # ---------------- critic: GAE(lambda) targets over the imagined transitions ----------------
         v_loss = torch.zeros((), device=dev)
@@ -467,17 +505,26 @@ class SuperMimicRunner:
         self.collector = None
         if c.collect_graph:
             self.buffer.use_device_ptr()
-            self.collector = Collector(self)
+            self.collector = Collector(self, overlap=c.overlap_collect)
+        if c.overlap_collect:
+            assert c.collect_graph and c.cuda_graph, "overlap_collect overlaps the collection graph with the update graphs"
+            self.buffer.use_sample_snapshot(reserve=math.ceil(1.0 / c.utd))  # the most steps one iteration collects
+            self.collect_stream = torch.cuda.Stream(device=self.device)
 
     @torch.no_grad()
-    def collect(self, n_steps: int, stats: dict):
+    def collect(self, n_steps: int, stats: dict, record=None):
+        """n_steps simulator steps into the buffer; their statistics appended to ``stats`` (``record``: a stream the
+        statistics are also used on, when collecting on another one)."""
         u, cmd, N = self.uenv, self.cmd, self.uenv.num_envs
         if self.collector is not None:  # collect_graph: the thin simulator wrapper, one CUDA graph per step
             for _ in range(n_steps):
                 out = self.collector.step()
                 self.sim_steps += N
                 for k in STATS:
-                    stats[k].append(out[k].clone())
+                    v = out[k].clone()
+                    if record is not None:
+                        v.record_stream(record)
+                    stats[k].append(v)
             return
         for _ in range(n_steps):
             S = cmd.read_state()
@@ -487,7 +534,7 @@ class SuperMimicRunner:
             self.pi.obs_norm.update(obs["policy"])
             self.pi.goal_norm.update(obs["goal"])
             a = self.pi(obs["policy"], obs["goal"])
-            a = (a + self.cfg.action_noise * torch.randn_like(a)).clamp(0.0, 1.0)
+            a = networks.explore(a, self.cfg.action_noise, self.cfg.action_noise_dist)
             obs, rew, dones, _ = self.env.step(a)
             S1 = cmd.read_state()
             done = dones.bool()
@@ -605,6 +652,93 @@ class SuperMimicRunner:
         print(f"eprobe it {it}: lead {lead} frames, {steps} steps in {secs:.0f} s | {len(hit)}/{P} probes failed in "
               f"{len(clips)} clips {clips[:6]}{' ...' if len(clips) > 6 else ''}", flush=True)  # fmt: skip
 
+    # ------------------------------------------------------------------ one training iteration
+    def make_graphs(self):
+        """cuda_graph: the world-model and policy updates as Graphed (captured after their warm-up calls); with
+        overlap_wm the world model's on its own stream and random state. Returns them."""
+        c = self.cfg
+        self.graphs = {"wm": Graphed(self.wm_update, lambda: True, own=c.overlap_wm),
+                       "policy": Graphed(self.policy_update, lambda: self.pi_avg is None or self._ema_n > 0)}  # fmt: skip
+        if c.overlap_wm:
+            self.wm_stream = torch.cuda.Stream(device=self.device)
+        return self.graphs["wm"], self.graphs["policy"]
+
+    @torch.no_grad()
+    def sync_wm_imag(self):
+        """overlap_wm: the world model's parameters and normalizers into imagination's copy (on the current stream)."""
+        if self.wm_imag is self.wm:
+            return
+        if self._wm_sync is None:
+            self._wm_sync = (list(self.wm_imag.parameters()) + list(self.wm_imag.buffers()),
+                             [t.detach() for t in list(self.wm.parameters()) + list(self.wm.buffers())])  # fmt: skip
+        torch._foreach_copy_(*self._wm_sync)
+
+    def can_overlap_wm(self, it: int) -> bool:
+        """overlap_wm: both update graphs are captured and the policy updates this iteration."""
+        g = self.graphs
+        return (self.cfg.overlap_wm and it >= self.cfg.wm_only_iters and g is not None and g["wm"].graph is not None
+                and g["policy"].graph is not None)  # fmt: skip
+
+    def _updates(self, it: int, agg: dict, wm_update, policy_update):
+        """The world-model updates, then the policy update; with overlap_wm (once both are captured) the world-model
+        updates run on their own stream concurrently with the policy update, whose imagination steps the copy of the
+        world model taken here (one update round older)."""
+        c = self.cfg
+        if c.overlap_wm:
+            self.sync_wm_imag()
+        overlap = self.can_overlap_wm(it)
+        if overlap:
+            main, side = torch.cuda.current_stream(), self.wm_stream
+            side.wait_stream(main)
+            with torch.cuda.stream(side):
+                for _ in range(c.wm_batches):
+                    l, e8, et = wm_update(record=main)
+        else:
+            for _ in range(c.wm_batches):
+                l, e8, et = wm_update()
+        agg["wm"].append(l), agg["wm8"].append(e8), agg["wmt"].append(et)
+        if it >= c.wm_only_iters:
+            pl, vl, ir, gn, surv, clip = policy_update()
+            if c.empty_cache and str(self.device).startswith("cuda"):
+                # hand the update's cached blocks back: MuJoCo-Warp allocates outside torch's pool when it steps
+                torch.cuda.empty_cache()
+            agg["pi"].append(pl), agg["v"].append(vl), agg["ir"].append(ir), agg["gn"].append(gn), agg["surv"].append(surv)
+            agg["clip"].append(clip)
+        if overlap:
+            main.wait_stream(side)
+
+    def can_overlap(self, it: int) -> bool:
+        """overlap_collect: every graph this iteration replays is captured (warm-ups and captures run serially)."""
+        col, g = self.collector, self.graphs
+        if col is None or not col.overlap or col.graph is None or g is None or g["wm"].graph is None:
+            return False
+        return it < self.cfg.wm_only_iters or g["policy"].graph is not None
+
+    def iterate(self, it: int, n: int, stats: dict, agg: dict, wm_update, policy_update):
+        """Collect n simulator steps, then the world-model and policy updates; with overlap_collect (once every graph
+        is captured) the collection runs on its own stream concurrently with the updates, which sample the buffer as it
+        stood before it (see SuperMimicRunnerCfg.overlap_collect)."""
+        col = self.collector
+        overlap = col is not None and col.overlap
+        if overlap and self.can_overlap(it):
+            main, side = torch.cuda.current_stream(), self.collect_stream
+            col.pull_policy()
+            col.push_norms()
+            self.buffer.snapshot()
+            side.wait_stream(main)
+            with torch.cuda.stream(side):
+                self.collect(n, stats, record=main)
+            self._updates(it, agg, wm_update, policy_update)
+            main.wait_stream(side)
+            return
+        if overlap:
+            col.pull_policy()
+        self.collect(n, stats)
+        if overlap:
+            col.push_norms()
+            self.buffer.snapshot()
+        self._updates(it, agg, wm_update, policy_update)
+
     # ------------------------------------------------------------------ mjlab runner interface
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False):
         del init_at_random_ep_len  # episodes already start at sampled reference frames
@@ -620,10 +754,9 @@ class SuperMimicRunner:
             # capture waits for the first (eager) EMA copy of the policy
             if self.buffer.ptr_t is None:
                 self.buffer.use_device_ptr()
-            self.graphs = {"wm": Graphed(self.wm_update, lambda: True),
-                           "policy": Graphed(self.policy_update, lambda: self.pi_avg is None or self._ema_n > 0)}  # fmt: skip
-            wm_update, policy_update = self.graphs["wm"], self.graphs["policy"]
+            wm_update, policy_update = self.make_graphs()
         else:
+            assert not c.overlap_wm, "overlap_wm overlaps the world-model and policy update graphs: needs cuda_graph"
             self.graphs = None
             wm_update, policy_update = self.wm_update, self.policy_update
         t_start, t_log, step_acc = time.time() - self.wall_offset, time.time(), 0.0
@@ -641,17 +774,7 @@ class SuperMimicRunner:
             step_acc -= n
             if c.eprobe_share > 0 and it >= c.eprobe_start and it % c.eprobe_every == 0:
                 self.eprobe_burst(it)
-            self.collect(n, stats)
-            for _ in range(c.wm_batches):
-                l, e8, et = wm_update()
-            agg["wm"].append(l), agg["wm8"].append(e8), agg["wmt"].append(et)
-            if it >= c.wm_only_iters:
-                pl, vl, ir, gn, surv, clip = policy_update()
-                if c.empty_cache and str(self.device).startswith("cuda"):
-                    # hand the update's cached blocks back: MuJoCo-Warp allocates outside torch's pool when it steps
-                    torch.cuda.empty_cache()
-                agg["pi"].append(pl), agg["v"].append(vl), agg["ir"].append(ir), agg["gn"].append(gn), agg["surv"].append(surv)
-                agg["clip"].append(clip)
+            self.iterate(it, n, stats, agg, wm_update, policy_update)
             self.it = it + 1
             if self.it % c.log_interval == 0:
                 mean = lambda x: _nanmean([float(v) for v in x])  # noqa: E731  (collect_graph: NaN = no episode ended)
@@ -689,6 +812,8 @@ class SuperMimicRunner:
                 agg = {k: [] for k in agg}
             stop = c.max_hours > 0 and time.time() - t_start >= c.max_hours * 3600
             if self.log_dir and (self.it % c.save_interval == 0 or it + 1 == start_it + num_learning_iterations or stop):
+                if self.collector is not None:
+                    self.collector.push_norms()  # overlap: the latest statistics into the saved networks
                 self.wall_offset = time.time() - t_start
                 self.save(os.path.join(self.log_dir, f"model_{self.it:06d}.pt"))
             if stop:

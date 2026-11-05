@@ -21,16 +21,23 @@ stream (the reset draw is an inverse-CDF draw instead of ``multinomial``).
 
 The collector owns the training env's simulator once built: mjlab's action manager, actuator targets, observation
 buffers and step counter are not advanced (nothing reads them during training).
+
+With ``overlap`` (overlap_collect) the step runs on a second stream concurrently with the updates, so it shares no
+written state with them: it acts with its own copy of the policy (``pull_policy`` refreshes its parameters from the
+live policy), updates its own copies of the observation and world-model normalizers (``push_norms`` copies their
+statistics to the trainer's), draws from its own random state and is captured on its own stream (its own cuBLAS
+workspace).
 """
 
 from __future__ import annotations
 
+import copy
 import time
 from typing import TYPE_CHECKING
 
 import torch
 
-from muscle_supermimic.rl.supermimic.networks import WorldModel
+from muscle_supermimic.rl.supermimic.networks import WorldModel, explore
 from muscle_supermimic.tasks.tracking.mdp.heads import StepCtx, flatten_body
 
 if TYPE_CHECKING:
@@ -40,7 +47,7 @@ STATS = ("r", "r_terms", "ep_len", "ep_ret", "term", "done")
 
 
 class Collector:
-    def __init__(self, runner: SuperMimicRunner, warmup: int = 3):
+    def __init__(self, runner: SuperMimicRunner, warmup: int = 3, overlap: bool = False):
         import mujoco_warp as mjwarp
 
         r, u, cmd = runner, runner.uenv, runner.cmd
@@ -70,6 +77,34 @@ class Collector:
         self.touch = cmd.read_state()[7].clone()
         self.cuda = str(r.device).startswith("cuda")
         self.warmup, self.calls, self.graph, self.out = warmup, 0, None, None
+        # the policy it acts with and the normalizers it updates: the trainer's own, or (overlap) copies of them
+        self.overlap = overlap
+        assert not overlap or self.cuda, "overlap_collect needs a GPU"
+        names = ("in_norm", "out_norm", "inc_norm", "touch_norm")
+        self.pi = copy.deepcopy(r.pi) if overlap else r.pi
+        self.norms = {k: copy.deepcopy(getattr(r.wm, k)) if overlap else getattr(r.wm, k) for k in names}
+        if overlap:
+            self.pi.requires_grad_(False)  # it only acts
+            self._params = (list(self.pi.parameters()), list(r.pi.parameters()))
+            mine = [self.pi.obs_norm, self.pi.goal_norm] + [self.norms[k] for k in names]
+            theirs = [r.pi.obs_norm, r.pi.goal_norm] + [getattr(r.wm, k) for k in names]
+            self._norm_bufs = ([b for n in mine for b in n.buffers()], [b for n in theirs for b in n.buffers()])
+            gen = torch.cuda.default_generators[torch.device(r.device).index or 0]
+            self.rng = gen.clone_state()  # the captured step's own random state (seeded from the run's seed)
+            self.rng.manual_seed(int(torch.randint(0, 2**62, ())))
+            self.stream = torch.cuda.Stream(device=r.device)  # the capture stream (and its cuBLAS workspace)
+
+    @torch.no_grad()
+    def pull_policy(self):
+        """overlap: the live policy's parameters into the collector's copy (on the current stream)."""
+        if self.overlap:
+            torch._foreach_copy_(*self._params)
+
+    @torch.no_grad()
+    def push_norms(self):
+        """overlap: the collector's normalizer statistics into the trainer's (on the current stream)."""
+        if self.overlap:
+            torch._foreach_copy_(self._norm_bufs[1], self._norm_bufs[0])
 
     # ------------------------------------------------------------------ one step (the captured body)
     def _step(self) -> dict:
@@ -81,10 +116,10 @@ class Collector:
         ctx = StepCtx(S, f, self.a_last, self.a_prev)
         ctx.cache.update(cmd._shared_obs(S))
         obs, goal = r.obs_policy.assemble(None, ctx), r.obs_goal.assemble(None, ctx)
-        r.pi.obs_norm.update(obs)
-        r.pi.goal_norm.update(goal)
-        a = r.pi(obs, goal)
-        a = (a + c.action_noise * torch.randn_like(a)).clamp(0.0, 1.0)
+        self.pi.obs_norm.update(obs)
+        self.pi.goal_norm.update(goal)
+        a = self.pi(obs, goal)
+        a = explore(a, c.action_noise, c.action_noise_dist).to(a.dtype)
         self.ctrl[:, self.ctrl_ids] = a  # the muscle excitation action: excitation j is the ctrl of actuator j
         for _ in range(u.cfg.decimation):
             mjwarp.step(sim.wp_model, sim.wp_data)
@@ -115,11 +150,11 @@ class Collector:
 
         r.buffer.add_device({"s": flatten_body(S), "act": S[6], "touch": S[7], "a": a, "s1": flatten_body(S1), "touch1": S1[7],
                              "r": rew, "f": f, "ep_step": ep_step, "done": done})  # fmt: skip
-        wm = r.wm
-        wm.in_norm.update(wm.inputs(S, S[6], S1[6]))
-        wm.out_norm.update(wm.targets(S, S1))
-        wm.inc_norm.update(WorldModel.increments(S, S1))
-        wm.touch_norm.update(S1[7])
+        wm, nm = r.wm, self.norms
+        nm["in_norm"].update(wm.inputs(S, S[6], S1[6]))
+        nm["out_norm"].update(wm.targets(S, S1))
+        nm["inc_norm"].update(WorldModel.increments(S, S1))
+        nm["touch_norm"].update(S1[7])
         r.ep_ret.add_(rew)
 
         # step statistics (the means over this step's ended episodes are NaN if none ended; the log skips them)
@@ -178,14 +213,24 @@ class Collector:
         torch.cuda.synchronize()
         t0 = time.time()
         self.graph = torch.cuda.CUDAGraph()
-        with torch.cuda.graph(self.graph, capture_error_mode="thread_local"), wp.ScopedDevice(self.sim.wp_device):
-            ws = wp.stream_from_torch(torch.cuda.current_stream())
-            with wp.ScopedStream(ws, sync_enter=False, sync_exit=False):
-                wp.capture_begin(stream=ws, external=True)
-                try:
-                    self.out = self._step()
-                finally:
-                    self.wp_graph = wp.capture_end(stream=ws)  # keep: it holds the captured kernels' modules
+        gen = orig = None
+        if self.overlap:  # captured with its own random state on its own stream (see the class notes)
+            gen = torch.cuda.default_generators[torch.device(self.r.device).index or 0]
+            orig = gen.graphsafe_get_state()
+            gen.graphsafe_set_state(self.rng)
+        try:
+            with torch.cuda.graph(self.graph, stream=self.stream if self.overlap else None, capture_error_mode="thread_local"), \
+                    wp.ScopedDevice(self.sim.wp_device):  # fmt: skip
+                ws = wp.stream_from_torch(torch.cuda.current_stream())
+                with wp.ScopedStream(ws, sync_enter=False, sync_exit=False):
+                    wp.capture_begin(stream=ws, external=True)
+                    try:
+                        self.out = self._step()
+                    finally:
+                        self.wp_graph = wp.capture_end(stream=ws)  # keep: it holds the captured kernels' modules
+        finally:
+            if gen is not None:
+                gen.graphsafe_set_state(orig)
         torch.cuda.synchronize()
         print(f"collect_graph: captured one collection step in {time.time() - t0:.1f} s, "
               f"{torch.cuda.memory_reserved() / 1e9:.1f} GB reserved", flush=True)  # fmt: skip

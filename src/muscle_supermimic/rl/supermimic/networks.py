@@ -74,6 +74,35 @@ class RunningNorm(nn.Module):
 AMP_DTYPE: torch.dtype | None = None
 
 
+def explore(a: torch.Tensor, sigma: float, dist: str = "gaussian") -> torch.Tensor:
+    """Exploration noise on excitations ``a`` in [0, 1] (the runner's ``action_noise`` / ``action_noise_dist``).
+
+    gaussian: ``a + N(0, sigma^2)`` clipped to [0, 1]. Clipping is not mean-preserving: at a policy's typical
+    near-silent excitations (a ~ 0.02) about 40 % of the draws fall below 0, and the executed excitation averages
+    about 2.7x the intended one.
+    beta: ``Beta(k a, k (1 - a))`` with ``k = 1 / (4 sigma^2) - 1``: mean exactly ``a``, variance ``a (1 - a) / (k + 1)``,
+    so the standard deviation is ``sigma`` at ``a = 0.5`` and shrinks towards the bounds, which it never leaves. Drawn
+    as ``X / (X + Y)`` from two Gamma variates; where both underflow (concentrations of ~1e-3 at a near 0 or 1) the
+    excitation stays ``a``, as it does at 0 and 1 exactly.
+    reflect: ``a + N(0, sigma^2)`` folded back into [0, 1] at both bounds (a triangle wave of period 2, so any number of
+    folds): the Gaussian's step sizes, never outside the box and no mass piled on 0 or 1. Not mean-preserving either:
+    at a = 0.02 the executed excitation averages 0.081 (clipping: 0.051), and 24 % of the draws exceed a + 0.1
+    (clipping: 16 %, Beta: 1.4 %)."""
+    if dist == "gaussian":
+        return (a + sigma * torch.randn_like(a)).clamp(0.0, 1.0)
+    if dist == "reflect":
+        x = torch.remainder(a.float() + sigma * torch.randn_like(a, dtype=torch.float32), 2.0)
+        return (1.0 - (1.0 - x).abs()).clamp(0.0, 1.0)
+    assert dist == "beta", dist
+    k = 1.0 / (4.0 * sigma * sigma) - 1.0
+    assert k > 0, "beta noise needs action_noise < 0.5"
+    a = a.float().clamp(0.0, 1.0)
+    x = torch._standard_gamma((k * a).clamp(min=1e-6))
+    y = torch._standard_gamma((k * (1.0 - a)).clamp(min=1e-6))
+    s = x + y
+    return torch.where((s > 0) & (a > 0) & (a < 1), x / s.clamp(min=1e-30), a).clamp(0.0, 1.0)
+
+
 def run_mlp(net: nn.Module, x: torch.Tensor) -> torch.Tensor:
     if AMP_DTYPE is None:
         return net(x)

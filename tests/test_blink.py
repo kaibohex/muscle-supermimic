@@ -274,3 +274,80 @@ def test_runner_with_the_recipe_learns_and_round_trips(setup, tmp_path):
     torch.save(old, os.path.join(tmp_path, "old.pt"))
     runner.load(os.path.join(tmp_path, "old.pt"))
     torch.testing.assert_close(runner.wm.inc_norm.mean, runner.wm.out_norm.mean, atol=0, rtol=0)
+
+
+def test_beta_exploration_noise_is_unbiased_and_stays_in_the_box():
+    from muscle_supermimic.rl.supermimic.networks import explore
+
+    torch.manual_seed(0)
+    a = torch.tensor([0.0, 1e-4, 0.02, 0.2, 0.5, 0.9, 1.0]).repeat(40000, 1)
+    x = explore(a, 0.1, "beta")
+    assert torch.isfinite(x).all() and (x >= 0).all() and (x <= 1).all()
+    k = 1 / (4 * 0.1**2) - 1  # 24: standard deviation 0.1 at 0.5
+    torch.testing.assert_close(x.mean(0), a[0], atol=2e-3, rtol=0)  # mean-preserving, also next to the bounds
+    torch.testing.assert_close(x.std(0), (a[0] * (1 - a[0]) / (k + 1)).sqrt(), atol=2e-3, rtol=0.02)
+    assert torch.equal(x[:, 0], a[:, 0]) and torch.equal(x[:, -1], a[:, -1])  # no noise at the bounds themselves
+    # the clipped Gaussian it replaces is biased upwards near 0
+    g = explore(a, 0.1, "gaussian")
+    assert float(g[:, 2].mean()) > 2 * 0.02
+
+
+def test_reflected_exploration_noise_folds_the_gaussian_into_the_box():
+    import math
+
+    from muscle_supermimic.rl.supermimic.networks import explore
+
+    torch.manual_seed(0)
+    a = torch.tensor([0.0, 0.02, 0.5, 0.95, 1.0]).repeat(200000, 1)
+    x = explore(a, 0.1, "reflect")
+    assert (x >= 0).all() and (x <= 1).all()
+    assert float((x == 0).float().mean()) < 1e-4 and float((x == 1).float().mean()) < 1e-4  # nothing piled on the bounds
+    # next to a bound: the folded normal |N(m, s^2)|, mean s sqrt(2/pi) exp(-m^2 / 2 s^2) + m erf(m / s sqrt(2))
+    s = 0.1
+
+    def folded(m):
+        return s * math.sqrt(2 / math.pi) * math.exp(-(m**2) / (2 * s**2)) + m * math.erf(m / (s * math.sqrt(2)))
+
+    assert abs(float(x[:, 0].mean()) - folded(0.0)) < 1e-3  # a = 0: the half-normal
+    assert abs(float(x[:, 1].mean()) - folded(0.02)) < 1e-3  # 0.081
+    assert abs(float(x[:, 3].mean()) - (1 - folded(0.05))) < 1e-3  # the upper bound mirrors the lower
+    assert abs(float(x[:, 4].mean()) - (1 - folded(0.0))) < 1e-3
+    # in the middle it is the plain Gaussian
+    assert abs(float(x[:, 2].mean()) - 0.5) < 1e-3 and abs(float(x[:, 2].std()) - 0.1) < 1e-3
+    # far outside the box (a large sigma) the triangle wave still lands inside
+    y = explore(torch.full((1000,), 0.5), 3.0, "reflect")
+    assert (y >= 0).all() and (y <= 1).all() and float(y.std()) > 0.2
+
+
+def test_sampling_from_a_snapshot_never_reaches_the_rows_being_written():
+    """overlap_collect: sampling reads the write head and fill level of the last snapshot, capped so that the next
+    `reserve` rows (overwritten by the concurrent collection) are never read; writes after the snapshot do not move it."""
+    from muscle_supermimic.rl.supermimic.buffer import ReplayBuffer
+
+    torch.manual_seed(0)
+    T, N, reserve = 10, 3, 3
+    buf = ReplayBuffer(T, N, body_dim=4, num_muscles=2, num_touch=1, device="cpu")
+    tr = {k: torch.zeros((N,) + shape, dtype=dt) for k, (shape, dt) in buf.fields.items()}
+    for _ in range(12):  # full and wrapped: the oldest rows are the next ones written
+        buf.add(tr)
+    buf.use_device_ptr()
+    buf.use_sample_snapshot(reserve)
+    rows = []
+    row = buf._row
+    buf._row = lambda age: rows.append(row(age).flatten()) or row(age)
+
+    def sampled():
+        rows.clear()
+        buf.sample_windows(400, 2)
+        buf.sample_starts(400, 1)
+        return set(torch.cat(rows).tolist())
+
+    ptr = buf.ptr
+    in_flight = {(ptr + i) % T for i in range(reserve)}
+    first = sampled()
+    assert first == set(range(T)) - in_flight  # everything else, the newest row included
+    for _ in range(reserve):  # the concurrent collection writes the reserved rows
+        buf.add_device(tr)
+    assert sampled() == first  # sampling still reads the snapshot
+    buf.snapshot()
+    assert sampled() == set(range(T)) - {(ptr + reserve + i) % T for i in range(reserve)}

@@ -27,6 +27,12 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     action_noise: float = 0.1
     """Exploration noise N(0, sigma^2) added to the action, i.e. the excitations, during collection, then clipped to
     [0, 1]. Noise on the logits would shrink to sigma * e(1 - e) at low excitations."""
+    action_noise_dist: Literal["gaussian", "beta", "reflect"] = "gaussian"
+    """Distribution of the exploration noise (networks.explore): "gaussian" adds N(0, action_noise^2) and clips to [0, 1],
+    which biases near-silent muscles upwards; "beta" draws from a Beta distribution with mean the policy's excitation and
+    standard deviation action_noise at 0.5, shrinking towards 0 and 1, so it stays in the box with no bias (Trial 10:
+    the policy stalls, near-silent muscles are never driven up); "reflect" adds N(0, action_noise^2) and folds the draws
+    back into [0, 1] at the bounds: the Gaussian's step sizes, nothing piled on 0 or 1, biased upwards near 0."""
     warmup_steps: int = 64
     """Simulator steps before any update."""
 
@@ -150,6 +156,19 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     eager warm-up steps: no host synchronization in a step. The same transitions up to floating-point rounding, on
     another random stream. Needs no_sync and the motion command's bin_fix, no eprobe_share and no observation history;
     the replay buffer's write head lives on the device. On a CPU device the wrapper runs eagerly."""
+    overlap_collect: bool = False
+    """Systems: each iteration's collection runs on a second CUDA stream, concurrently with that iteration's world-model
+    and policy updates, once the collection and update graphs are captured (iterations before that run serially).
+    The collector acts with its own copy of the policy, refreshed from the live policy at the start of every iteration
+    (the parameters it acts with are the same as without overlap), and owns the observation and world-model
+    normalizer statistics, copied to the trainer's at the start of every iteration; it draws from its own random
+    state. The updates sample the buffer as it stood at the start of the iteration, without the rows the collection
+    is overwriting: the newest steps reach them one iteration later. Needs collect_graph and cuda_graph on a GPU."""
+    overlap_wm: bool = False
+    """Systems (InstantTrack v1.3's --overlap_wm): once both update graphs are captured, the world-model updates run on
+    their own stream concurrently with the policy update; imagination steps a copy of the world model (parameters and
+    normalizers) taken at the start of each iteration's updates, one update round older. The world-model graph is
+    captured on its own stream with its own random state. Needs cuda_graph."""
     max_hours: float = 0.0
     """Stop after this much training wall-clock (the runner's clock: compilation, graph capture and checkpoints
     included, process start-up and data loading excluded), saving a final checkpoint. 0: no limit."""
