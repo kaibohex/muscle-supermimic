@@ -98,10 +98,26 @@ being ported here as runner flags, every one off by default, so `uv run train` w
 | evaluation-guided resets: from iteration 1000, every 125 iterations the deployed policy is swept over all clips under evaluation conditions, one probe world per 6 s tile of each clip started 4-9 s earlier on the reference; 15 % of the resets go to the 10 s before the places where it fails (counts decaying by 0.7 per sweep) | `--agent.eprobe-share 0.15` (`--agent.eprobe-*`) | BlinkMimic |
 | the world-model update and the policy + critic update as CUDA graphs | `--agent.cuda-graph True` | InstantTrack / BlinkMimic |
 | one collection step, episode ends and resets included, as one CUDA graph through a thin simulator wrapper | `--agent.collect-graph True` | BlinkMimic (`--collect_graph --reset_masked`) |
+| the collection on a second CUDA stream, concurrently with the updates (its own policy copy, normalizers, random state and capture stream; the updates sample the buffer as it stood at the start of the iteration) | `--agent.overlap-collect True` | |
 | stop after a wall-clock budget, with a final checkpoint | `--agent.max-hours H` | |
+| exploration noise from a Beta distribution with the policy's excitation as its mean (standard deviation `action_noise` at 0.5), instead of a clipped Gaussian | `--agent.action-noise-dist beta` | |
+| exploration noise `N(0, action_noise^2)` folded back into [0, 1] at the bounds instead of clipped | `--agent.action-noise-dist reflect` | |
 
 `train_log.csv` gains `pi_lr`, `pi_mult` and `nonfinite` (skipped non-finite policy updates). `ms-eval` and `play`
 read the deployed policy; resuming restores the average, the trigger and the counters.
+
+**Exploration noise and the excitation box.** The default noise, `a + N(0, 0.1^2)` clipped to [0, 1], is not
+mean-preserving where the policy keeps muscles nearly silent. On a trained MS-Human-700 policy (Trial 7, 512 envs,
+150 steps) 26 % of the excitations are below 0.05, 17.9 % of the noisy ones leave the box (14.9 % below 0), and for
+the near-silent quarter the executed excitation averages 0.050 against the intended 0.0185: the noise adds a tonic
+co-contraction the deterministic policy never produces. `--agent.action-noise-dist beta` draws from
+`Beta(k a, k (1 - a))`, `k = 1 / (4 sigma^2) - 1`, whose mean is the excitation itself and whose spread shrinks
+towards the bounds (`networks.explore`). That spread is the catch: any noise that stays in [0, 1] with mean `a` has a
+standard deviation of at most `sqrt(a (1 - a))`, and fixed-`k` Beta keeps a fifth of it, 0.028 at a = 0.02 against
+0.065 for the clipped Gaussian; only 1.4 % of its draws lift a near-silent muscle by more than 0.1 (clipped Gaussian:
+16 %). Trial 10 stalled at 0.40 held-out with it (the world model rarely sees those muscles act). `reflect` keeps the
+Gaussian's step sizes and folds the draws back into the box instead of piling 42 % of them on 0; it is biased upwards
+like clipping, more so (0.081 at a = 0.02), and lifts 24 % of the near-silent draws by more than 0.1.
 
 **What the first runs showed** (MS-Human-700 with locked hands, 4096 envs, one RunPod RTX 5090, 2026-11-03;
 `experiments/trials.json` and its page have the records). Three of BlinkMimic's G1 settings do not transfer, and
