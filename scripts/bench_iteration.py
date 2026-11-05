@@ -1,7 +1,7 @@
 """Wall-clock of one training iteration, split into collection, world-model updates and the policy update.
 
 Builds the task's env and the SuperMimic runner with the registered settings plus ``--set`` (runner cfg) and
-``--env-set`` (motion command cfg) overrides, trains ``--warmup`` iterations untimed (compilation, buffer fill;
+``--env-set`` (motion command cfg) and ``--sim-set`` (MuJoCo solver cfg, e.g. ``iterations=50 ls_iterations=25``) overrides, trains ``--warmup`` iterations untimed (compilation, buffer fill;
 policy updates from the first iteration) and then times ``--iters`` iterations piece by piece, the device
 synchronized around each piece. Reports seconds per iteration and torch's peak memory.
 
@@ -10,7 +10,9 @@ synchronized around each piece. Reports seconds per iteration and torch's peak m
       wm_opt=muon fused_adam=true no_sync=true pi_ema=0.995 empty_cache=false cuda_graph=true --env-set bin_fix=true fail_reset=0.3
 
 ``--set cuda_graph=true`` times the updates as CUDA graphs (captured during the warm-up, as in training);
-``--set collect_graph=true`` the collection steps through the graphed simulator wrapper (collector.py).
+``--set collect_graph=true`` the collection steps through the graphed simulator wrapper (collector.py);
+``--set overlap_collect=true`` (with both) times the runner's own ``iterate``, the collection on a second stream
+concurrently with the updates, as one piece.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ def main():
     ap.add_argument("--iters", type=int, default=20, help="timed iterations")
     ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="runner cfg overrides, e.g. pi_batch=2048")
     ap.add_argument("--env-set", nargs="*", default=[], metavar="KEY=VALUE", help="motion command cfg overrides, e.g. bin_fix=true")
+    ap.add_argument("--sim-set", nargs="*", default=[], metavar="KEY=VALUE", help="MuJoCo solver cfg overrides, e.g. iterations=50")
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
 
@@ -48,7 +51,6 @@ def main():
     from mjlab.rl import RslRlVecEnvWrapper
     from mjlab.tasks.registry import load_env_cfg, load_rl_cfg, load_runner_cls
 
-    from muscle_supermimic.rl.supermimic.runner import Graphed
 
     torch.manual_seed(0)
     cfg = load_env_cfg(args.task)
@@ -57,6 +59,9 @@ def main():
     for kv in args.env_set:
         k, v = kv.split("=", 1)
         setattr(cmd_cfg, k, parse_override(getattr(cmd_cfg, k), v))
+    for kv in args.sim_set:
+        k, v = kv.split("=", 1)
+        setattr(cfg.sim.mujoco, k, parse_override(getattr(cfg.sim.mujoco, k), v))
     cfg.scene.num_envs = N = args.num_envs
     env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=cfg, device=args.device))
     rl_default = load_rl_cfg(args.task)
@@ -80,21 +85,35 @@ def main():
     if c.cuda_graph:  # as learn(): the updates captured after three warm-up calls each (the policy's after the EMA copy)
         if runner.buffer.ptr_t is None:
             runner.buffer.use_device_ptr()
-        wm_update = Graphed(runner.wm_update, lambda: True)
-        policy_update = Graphed(runner.policy_update, lambda: runner.pi_avg is None or runner._ema_n > 0)
-    step_acc, t = 0.0, {"collect": 0.0, "wm": 0.0, "policy": 0.0}
+        wm_update, policy_update = runner.make_graphs()
+    step_acc, t = 0.0, {"collect": 0.0, "wm": 0.0, "policy": 0.0, "overlapped": 0.0}
+    n_overlapped = 0
     t0 = time.time()
     for it in range(args.warmup + args.iters):
         timed = it >= args.warmup
         if it == args.warmup:
             sync()
             if cuda:
+                print(f"warm-up peak: {torch.cuda.max_memory_allocated() / 2**30:.1f} GB allocated, "
+                      f"{torch.cuda.max_memory_reserved() / 2**30:.1f} GB reserved by torch", flush=True)  # fmt: skip
                 torch.cuda.reset_peak_memory_stats()
             print(f"warm-up done in {time.time() - t0:.0f} s; timing {args.iters} iterations", flush=True)
             t0 = time.time()
         step_acc += 1.0 / c.utd
         n = int(step_acc)
         step_acc -= n
+        if c.overlap_collect or c.overlap_wm:  # the runner's iteration, as learn() runs it
+            agg = {k: [] for k in ("wm", "wm8", "wmt", "pi", "v", "ir", "gn", "surv", "clip")}
+            sync()
+            t1 = time.time()
+            overlapped = runner.can_overlap(it) or runner.can_overlap_wm(it)
+            runner.iterate(it, n, stats, agg, wm_update, policy_update)
+            sync()
+            if timed:
+                t["overlapped"] += time.time() - t1
+                n_overlapped += overlapped
+            stats = {k: [] for k in stats}
+            continue
         sync()
         t1 = time.time()
         runner.collect(n, stats)
@@ -118,10 +137,16 @@ def main():
     mem = torch.cuda.max_memory_allocated() / 2**30 if cuda else 0.0
     sim_steps = sum(int(k) for k in [args.iters / c.utd])
     print(f"\n{args.task}, {N} envs, {args.iters} timed iterations, overrides {overrides or 'none'}, "
-          f"env overrides {args.env_set or 'none'}, device {args.device}")  # fmt: skip
+          f"env overrides {args.env_set or 'none'}, solver {cfg.sim.mujoco.integrator} {cfg.sim.mujoco.iterations}/"
+          f"{cfg.sim.mujoco.ls_iterations}, device {args.device}")  # fmt: skip
+    qpos = runner.uenv.sim.data.qpos._tensor
+    print(f"simulator state finite in {int(torch.isfinite(qpos).all(-1).sum())} of {N} envs")
     print(f"{'piece':10s} {'s / iteration':>14s} {'share':>7s}")
     for k, v in t.items():
-        print(f"{k:10s} {v / args.iters:14.3f} {v / total:7.1%}")
+        if v > 0:
+            print(f"{k:10s} {v / args.iters:14.3f} {v / total:7.1%}")
+    if c.overlap_collect or c.overlap_wm:
+        print(f"{n_overlapped} of {args.iters} timed iterations ran overlapped (collection and/or world-model updates)")
     print(f"{'total':10s} {total / args.iters:14.3f} {'':7s}   ({args.iters / total:.3f} it/s; collection = {sim_steps / args.iters:.1f} "
           f"sim steps of {N} envs per iteration; torch peak {mem:.1f} GB)")  # fmt: skip
 

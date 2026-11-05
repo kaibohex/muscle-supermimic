@@ -37,6 +37,8 @@ envs:
   EVAL_DURING: "1"
   # 1: run scripts/bench_collect.sh first, so that a fresh machine's compilation is not counted in a --agent.max-hours budget
   PREWARM: "0"
+  # minutes: the evaluation leaves out checkpoints saved earlier in training (every clip still fails there)
+  EVAL_SKIP_MIN: "0"
   HF_RESULTS_REPO: YOUR_HF_USER/supermimic-runs
   KIT_REPO: YOUR_HF_USER/mshuman700-kit
   MSHUMAN_COMMIT: 2d686957aefd5739cf4d2859a6acfd94c8f84400

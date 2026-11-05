@@ -8,6 +8,9 @@ divided by its maximum attainable value.
   uv run ms-eval --checkpoint logs/rsl_rl/mshuman700_tracking/<run>/model_014000.pt \
       --motion-file data/mshuman700_kit/kit_kinesis_test.txt
   uv run ms-eval --run-dir logs/rsl_rl/mshuman700_tracking/<run> --motion-file data/mshuman700_kit/kit_kinesis_test.txt --watch
+
+``--skip-before-min M`` (with ``--run-dir``) leaves out the checkpoints saved before M minutes of training (their
+``wall_time``): on MS-Human-700 every clip still fails in the first ~8 minutes, so evaluating them only costs time.
 """
 
 from __future__ import annotations
@@ -105,6 +108,8 @@ def main():
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--action-noise", type=float, default=0.0, help="exploration noise std on the excitations (training: 0.1)")
     ap.add_argument("--seed", type=int, default=0, help="seed of the action noise")
+    ap.add_argument("--skip-before-min", type=float, default=0.0,
+                    help="--run-dir: skip checkpoints saved before this many minutes of training (not written to eval.csv)")
     args = ap.parse_args()
     assert args.checkpoint or args.run_dir, "pass --checkpoint or --run-dir"
     env, runner = build(args.task, args.motion_file, args.device)
@@ -126,6 +131,10 @@ def main():
             if it in done:
                 continue
             ck = runner.load(c, load_cfg={"actor": True})
+            if ck["wall_time"] / 60 < args.skip_before_min:
+                print(f"[eval] it {it} ({ck['wall_time'] / 60:.1f} min): skipped (before {args.skip_before_min:g} min)", flush=True)
+                done.add(it)
+                continue
             t0 = time.time()
             res = evaluate(env, runner, action_noise=args.action_noise, seed=args.seed)
             line = (f"{it},{ck['wall_time'] / 3600:.4f},{ck['saved_at']},{time.strftime('%Y-%m-%d %H:%M:%S')},{res['norm_return']:.4f},"

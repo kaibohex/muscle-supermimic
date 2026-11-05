@@ -9,6 +9,8 @@
 : "${EXPERIMENT:=mshuman700_tracking}" "${EXTRA_ARGS:=--agent.max-iterations 8000 --agent.seed 0}"
 : "${KEEP_CKPTS:=model_002000.pt model_004000.pt model_006000.pt model_008000.pt}" "${EVAL_DURING:=1}"
 : "${HF_RESULTS_REPO:=YOUR_HF_USER/supermimic-runs}" "${PREWARM:=0}"
+# EVAL_SKIP_MIN: leave out the checkpoints of the first N minutes of training (all clips still fail there)
+: "${EVAL_SKIP_MIN:=0}"
 set -uo pipefail
 cd ~/sky_workdir
 export PATH=$HOME/.local/bin:$PATH MUJOCO_GL=disable PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -21,7 +23,7 @@ if [ "$EVAL_DURING" = "1" ]; then
   ( sleep 300
     RUN=$(ls -dt logs/rsl_rl/$EXPERIMENT/*_$RUN_NAME 2>/dev/null | head -1)
     [ -n "$RUN" ] && exec .venv/bin/python -m muscle_supermimic.tasks.tracking.scripts.evaluate --task $TASK --run-dir $RUN \
-      --motion-file $TEST_MOTION --device cuda:0 --watch > logs/eval_$RUN_NAME.out 2>&1
+      --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN --watch > logs/eval_$RUN_NAME.out 2>&1
   ) &
   EVAL_PID=$!
 fi
@@ -41,7 +43,7 @@ RUN=$(ls -dt logs/rsl_rl/$EXPERIMENT/*_$RUN_NAME 2>/dev/null | head -1)
 if [ -n "$RUN" ]; then
   if [ -n "$EVAL_PID" ]; then sleep 120; kill $EVAL_PID 2>/dev/null; fi  # let the watcher finish the last checkpoint, then evaluate any it missed
   .venv/bin/python -m muscle_supermimic.tasks.tracking.scripts.evaluate --task $TASK --run-dir $RUN \
-    --motion-file $TEST_MOTION --device cuda:0 >> logs/eval_$RUN_NAME.out 2>&1
+    --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN >> logs/eval_$RUN_NAME.out 2>&1
   grep "^\[eval\]" logs/eval_$RUN_NAME.out | tail -5
   echo "== upload $RUN -> $HF_RESULTS_REPO/$RUN_NAME $(date -u +%FT%TZ)"
   INC=(--include "*.csv" --include "*.json" --include "params/*")  # hf upload takes one pattern per --include
