@@ -13,6 +13,8 @@ from dataclasses import asdict
 import pytest
 import torch
 
+from muscle_supermimic.rl.supermimic.collector import STATS
+
 DATA = os.path.join(os.path.dirname(__file__), "..", "data")
 TASK, CLIP = "Mjlab-SuperMimic-Flat-MyoFullBody-No-Muscle-Obs", os.path.join(DATA, "myofullbody", "walk.npz")
 DEVICES = ["cpu"] + (["cuda:0"] if torch.cuda.is_available() else [])
@@ -60,7 +62,7 @@ def test_collector_matches_the_eager_env_step(pair):
     n = 40
     stats = []
     for r in (eager, graphed):
-        st = {k: [] for k in ("r", "r_terms", "ep_len", "ep_ret", "term", "done")}
+        st = {k: [] for k in STATS}
         r.collect(n, st)
         stats.append(st)
     col = graphed.collector

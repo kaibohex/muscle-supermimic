@@ -77,7 +77,9 @@ def main():
 
     # learn() without its logging: the pieces of an iteration, timed one by one
     runner.init_collection()  # with collect_graph also the collector (captured during the warm-up, as in training)
-    stats = {"r": [], "r_terms": [], "ep_len": [], "ep_ret": [], "term": [], "done": []}
+    from muscle_supermimic.rl.supermimic.collector import STATS
+
+    stats = {k: [] for k in STATS}
     runner.collect(max(c.warmup_steps, c.wm_window + runner.hist + 1), stats)
     from muscle_supermimic.rl.supermimic.runner import set_lr
 

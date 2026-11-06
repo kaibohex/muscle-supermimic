@@ -169,6 +169,28 @@ class SuperMimicRunnerCfg(RslRlBaseRunnerCfg):
     their own stream concurrently with the policy update; imagination steps a copy of the world model (parameters and
     normalizers) taken at the start of each iteration's updates, one update round older. The world-model graph is
     captured on its own stream with its own random state. Needs cuda_graph."""
+    # DEP-RL exploration (Schumacher et al., ICLR 2023; defaults: depRL's MyoSuite myoLegWalk settings)
+    dep: bool = False
+    """Explore with DEP as DEP-RL does (depRL's StochSwitchDep, per env): DEP alone drives every env for
+    ``dep_init_steps``; then, outside every ``dep_test_episode_every``-th episode, it takes an env over for
+    ``dep_intervention_length`` steps with probability ``dep_intervention_proba`` per step. The policy, with its
+    action noise, acts otherwise. DEP senses every env's muscle lengths (the simulator's actuator lengths) and keeps
+    learning at every step. Runs in the graphed collector (needs collect_graph)."""
+    dep_init_steps: int = -1
+    """Simulator steps of DEP alone at the start, as depRL fills its replay buffer with DEP before its first batch.
+    -1: until the policy's first update (the warmup and the world-model-only iterations)."""
+    dep_intervention_proba: float = 0.0004
+    dep_intervention_length: int = 5
+    dep_test_episode_every: int = 3
+    """Every this many episodes of an env runs the policy alone (depRL's greedy episodes); 0: none."""
+    dep_kappa: float = 1169.7
+    dep_tau: int = 40
+    dep_time_dist: int = 5
+    dep_bias_rate: float = 0.002
+    dep_s4avg: int = 2
+    """DEP's gain, correlation window, correlation time lag, bias rate and sensor smoothing (depRL's names)."""
+    dep_force_scale: float = 0.0
+    """DEP's sensors: muscle lengths plus this times muscle forces, each min-max normalized (depRL's force_scale)."""
     max_hours: float = 0.0
     """Stop after this much training wall-clock (the runner's clock: compilation, graph capture and checkpoints
     included, process start-up and data loading excluded), saving a final checkpoint. 0: no limit."""

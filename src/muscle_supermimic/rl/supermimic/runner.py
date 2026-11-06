@@ -503,6 +503,7 @@ class SuperMimicRunner:
         self.ep_ret = torch.zeros(u.num_envs, device=self.device)
         self.obs = self.env.get_observations()
         self.collector = None
+        assert not c.dep or c.collect_graph, "dep runs in the graphed collector: needs collect_graph"
         if c.collect_graph:
             self.buffer.use_device_ptr()
             self.collector = Collector(self, overlap=c.overlap_collect)
@@ -517,7 +518,11 @@ class SuperMimicRunner:
         statistics are also used on, when collecting on another one)."""
         u, cmd, N = self.uenv, self.cmd, self.uenv.num_envs
         if self.collector is not None:  # collect_graph: the thin simulator wrapper, one CUDA graph per step
+            c = self.cfg
             for _ in range(n_steps):
+                if self.collector.dep is not None:  # DEP alone until the policy's first update (or dep_init_steps)
+                    init = self.it < c.wm_only_iters if c.dep_init_steps < 0 else self.sim_steps < c.dep_init_steps * N
+                    self.collector.dep_init.fill_(bool(init))
                 out = self.collector.step()
                 self.sim_steps += N
                 for k in STATS:
@@ -791,6 +796,8 @@ class SuperMimicRunner:
                 row.update({"pi_lr": lr * pi_mult, "pi_mult": float(pi_mult), "nonfinite": int(self.nonfinite)})
                 if c.eprobe_share > 0:
                     row["probe_fail"] = self.probe_fail
+                if c.dep:
+                    row["dep_frac"] = mean(stats["dep"])
                 if c.lr_decay_ret > 0 and self._decay_at is None:
                     deadline = c.lr_decay_by > 0 and self.it >= c.lr_decay_by
                     if row["ep_ret_norm"] >= c.lr_decay_ret or deadline:
@@ -805,6 +812,7 @@ class SuperMimicRunner:
                     row.update({f"rew_{n}": float(v) for n, v in zip(self.reward_names, terms, strict=True)})
                 logger(row)
                 clip_s = f" clip {row['pi_state_clip']:.3f}" if "pi_state_clip" in row else ""
+                clip_s += f" dep {row['dep_frac']:.4f}" if "dep_frac" in row else ""
                 print(f"it {self.it} | {wall_h:.3f} h | wm {row['wm_loss']:.4f} e8 {row['wm_err8']:.4f} | pi {row['pi_loss']:.3f} "
                       f"v {row['v_loss']:.4f} imag_r {row['imag_rew']:.3f} surv {row['imag_survival']:.3f}{clip_s} | sim_r {row['sim_rew']:.3f} "
                       f"ep_len {row['ep_len']:.1f} ep_ret {row['ep_ret_norm']:.3f} term {term_frac:.2f} | {ips:.2f} it/s {row['gpu_mem_gb']:.1f} GB", flush=True)  # fmt: skip

@@ -43,7 +43,7 @@ from muscle_supermimic.tasks.tracking.mdp.heads import StepCtx, flatten_body
 if TYPE_CHECKING:
     from muscle_supermimic.rl.supermimic.runner import SuperMimicRunner
 
-STATS = ("r", "r_terms", "ep_len", "ep_ret", "term", "done")
+STATS = ("r", "r_terms", "ep_len", "ep_ret", "term", "done", "dep")
 
 
 class Collector:
@@ -93,6 +93,19 @@ class Collector:
             self.rng = gen.clone_state()  # the captured step's own random state (seeded from the run's seed)
             self.rng.manual_seed(int(torch.randint(0, 2**62, ())))
             self.stream = torch.cuda.Stream(device=r.device)  # the capture stream (and its cuBLAS workspace)
+        # DEP-RL exploration (dep): DEP senses every env's muscle lengths (the simulator's actuator lengths, current
+        # after the last forward) and drives the envs it takes over; device-side switching state, so it replays
+        self.dep = None
+        if c.dep:
+            from muscle_supermimic.rl.supermimic.dep import DEP
+
+            N, dev = u.num_envs, r.device
+            self.dep = DEP(N, len(self.ctrl_ids), c.dep_kappa, c.dep_tau, c.dep_time_dist, c.dep_bias_rate, c.dep_s4avg,
+                           c.dep_force_scale, dev)  # fmt: skip
+            self.act_len, self.act_force = d.actuator_length._tensor, d.actuator_force._tensor
+            self.dep_left = torch.zeros(N, dtype=torch.long, device=dev)  # steps left of an env's intervention
+            self.dep_episodes = torch.zeros(N, dtype=torch.long, device=dev)
+            self.dep_init = torch.ones((), dtype=torch.bool, device=dev)  # the initial phase (set by the runner)
 
     @torch.no_grad()
     def pull_policy(self):
@@ -120,6 +133,15 @@ class Collector:
         self.pi.goal_norm.update(goal)
         a = self.pi(obs, goal)
         a = explore(a, c.action_noise, c.action_noise_dist).to(a.dtype)
+        dep_use = torch.zeros_like(f, dtype=torch.bool)
+        if self.dep is not None:
+            from muscle_supermimic.rl.supermimic.dep import excitation, switch
+
+            y = self.dep.step(self.dep.sensors(self.act_len[:, self.ctrl_ids], self.act_force[:, self.ctrl_ids]))
+            dep_use, left = switch(self.dep_left, self.dep_episodes, self.dep_init, c.dep_intervention_proba,
+                                   c.dep_intervention_length, c.dep_test_episode_every)  # fmt: skip
+            self.dep_left.copy_(left)
+            a = torch.where(dep_use.unsqueeze(-1), excitation(y).to(a.dtype), a)
         self.ctrl[:, self.ctrl_ids] = a  # the muscle excitation action: excitation j is the ctrl of actuator j
         for _ in range(u.cfg.decimation):
             mjwarp.step(sim.wp_model, sim.wp_data)
@@ -164,13 +186,17 @@ class Collector:
         stats = {"r": rew.mean() / mx, "r_terms": terms.mean(0) / mx,
                  "ep_len": torch.where(nd > 0, (Tn * done).sum() / nd.clamp(min=1), nan),
                  "ep_ret": torch.where(nd > 0, (cmd.ep_ret / (Tn * mx) * done).sum() / nd.clamp(min=1), nan),
-                 "term": (fail & done).float().sum(), "done": nd.float()}  # fmt: skip
+                 "term": (fail & done).float().sum(), "done": nd.float(), "dep": dep_use.float().mean()}  # fmt: skip
 
         # episode ends: the eager reset's updates for the ended envs, as masked updates of every env
         cmd.finish_episodes_masked(done, fail, u.episode_length_buf)
         r.ep_ret.masked_fill_(done, 0.0)
         self.reset_mask.copy_(done)
         mjwarp.reset_data(sim.wp_model, sim.wp_data, reset=sim._reset_mask_wp)  # zeroes their ctrl too
+        if self.dep is not None:  # an env's controller restarts with its episode; its episode count moves on
+            self.dep.reset_masked(done)
+            self.dep_left.masked_fill_(done, 0)
+            self.dep_episodes.add_(done.long())
         frames, bins = cmd.sample_frames_masked(done.any())
         cmd.write_reference_state_masked(done, frames, bins, self.qpos, self.qvel, self.act)
         u.episode_length_buf.masked_fill_(done, 0)

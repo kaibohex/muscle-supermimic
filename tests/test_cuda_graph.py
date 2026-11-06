@@ -218,6 +218,46 @@ def test_overlapped_collection(tmp_path, remat, overlap_wm):
         assert all(abs(float(r[k])) < 1e6 for r in rows), k
 
 
+def test_dep_exploration_in_the_collection_graph(tmp_path):
+    """dep: DEP drives every env until the policy's first update, then takes envs over now and then; the collector's
+    CUDA graph replays it (device-side switching and DEP state), overlapped with the updates."""
+    import mjlab.tasks  # noqa: F401
+    from mjlab.envs import ManagerBasedRlEnv
+    from mjlab.rl import RslRlVecEnvWrapper
+    from mjlab.tasks.registry import load_env_cfg, load_rl_cfg, load_runner_cls
+
+    if not os.path.exists(CLIP):
+        pytest.skip(f"no test clip at {CLIP}")
+    torch.manual_seed(0)
+    cfg = load_env_cfg(TASK)
+    cmd = cfg.commands["motion"]
+    cmd.motion_file, cmd.sampling_mode, cmd.bin_fix, cmd.fail_reset = CLIP, "return", True, 0.3
+    cfg.scene.num_envs = 8
+    cfg.episode_length_s = 0.3
+    env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=cfg, device="cuda:0"))
+    rl = asdict(load_rl_cfg(TASK))
+    rl.update(wm_hidden=(64, 64, 64), enc_hidden=(64, 32, 16), dec_hidden=(64, 32, 16), critic_hidden=(32,), buffer_steps=40,
+              warmup_steps=20, wm_batch=16, wm_batches=2, pi_batch=8, horizon=4, log_interval=2, save_interval=1000, compile=False,
+              pi_ema=0.9, pi_opt="muon", wm_opt="muon", fused_adam=True, no_sync=True, wm_only_iters=4, empty_cache=False,
+              wm_structured=True, wm_mirror=0.5, value_clip=True, cuda_graph=True, collect_graph=True, overlap_collect=True,
+              action_noise_dist="beta", dep=True, dep_intervention_proba=0.3, dep_intervention_length=2, dep_test_episode_every=0)  # fmt: skip
+    runner = load_runner_cls(TASK)(env, rl, device="cuda:0")
+    runner.log_dir = str(tmp_path)
+    runner.learn(num_learning_iterations=16)
+    col = runner.collector
+    assert col.dep is not None and col.graph is not None
+    with open(os.path.join(tmp_path, "train_log.csv")) as fh:
+        rows = list(csv.DictReader(fh))
+    frac = [float(r["dep_frac"]) for r in rows]
+    # iterations 0-3 (rows 1-2): DEP alone; later the interventions (p = 0.3, 2 steps): a fraction of the env steps
+    assert frac[0] == frac[1] == 1.0 and all(0.0 < f < 1.0 for f in frac[3:]), frac
+    assert all(r["nonfinite"] == "0" and abs(float(r["wm_loss"])) < 1e6 for r in rows)
+    # DEP's state moved in every step, eager and replayed (device-side write position and episode counts; the 8 envs
+    # time out together every 30 steps here, so the step counts were just reset)
+    assert int(col.dep.ptr) == col.calls % col.dep.vel.shape[1] and int(col.dep_episodes.min()) >= 1
+    assert torch.isfinite(col.dep.y).all() and col.dep.len_hi.isfinite().all()
+
+
 @pytest.mark.parametrize("dist,std", [("beta", (0.3 * 0.7 / 25) ** 0.5), ("reflect", 0.1)])
 def test_noise_draws_fresh_samples_in_every_graph_replay(dist, std):
     """collect_graph with action_noise_dist beta or reflect: the draws are captured with the graph's random stream, so
