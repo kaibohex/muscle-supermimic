@@ -218,6 +218,70 @@ function lineChart(host, o) {
   new ResizeObserver(draw).observe(plot);
 }
 
+// ── Bar chart: horizontal bars from one baseline, the value at each tip, a tooltip per bar ─────
+// o.bars = [{label, sub, value, valueLabel, stepLabel, color, stripes: [color, color], head, rows}], o.xMax,
+// o.xTicks = [[value, label], ...], o.legend = [{name, color, cls}]; on a narrow screen the labels move above their bars
+function barChart(host, o) {
+  const plot = html('div', 'plot', host);
+  plot.style.position = 'relative';
+  if (o.legend) {
+    const lg = html('div', 'legend swatches', host);
+    for (const s of o.legend) {
+      const it = html('span', null, lg), sw = html('i', s.cls || null, it);
+      if (s.color) sw.style.background = s.color;
+      it.appendChild(document.createTextNode(s.name));
+    }
+  }
+  const tip = tooltip(plot);
+  const draw = () => {
+    plot.querySelector('svg')?.remove();
+    const W = Math.max(plot.clientWidth, 260), narrow = W < 600, BAR = 20, ROW = narrow ? 64 : 46;
+    const m = { l: narrow ? 2 : 290, r: 70, t: 4, b: 26 };
+    const H = m.t + ROW * o.bars.length + m.b;
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': o.aria });
+    plot.prepend(svg);
+    const defs = el('defs', {}, svg);
+    o.bars.forEach((b, i) => {  // two-colour stripes for a step that comes from both sources
+      if (!b.stripes) return;
+      const pat = el('pattern', { id: `bar-stripes-${i}`, patternUnits: 'userSpaceOnUse', width: 8, height: 8, patternTransform: 'rotate(45)' }, defs);
+      el('rect', { width: 4, height: 8 }, pat).style.fill = b.stripes[0];
+      el('rect', { x: 4, width: 4, height: 8 }, pat).style.fill = b.stripes[1];
+    });
+    const x = linear(0, o.xMax, m.l, W - m.r);
+    const g = el('g', { class: 'grid' }, svg), ax = el('g', { class: 'axis' }, svg);
+    for (const [v, label] of o.xTicks) {
+      if (v > 0) el('line', { x1: x(v), x2: x(v), y1: m.t, y2: H - m.b }, g);
+      const t = el('text', { x: x(v), y: H - m.b + 15, 'text-anchor': 'middle', class: 'tick' }, ax);
+      t.textContent = label;
+    }
+    el('line', { x1: x(0), x2: x(0), y1: m.t, y2: H - m.b }, ax);
+    o.bars.forEach((b, i) => {
+      const top = m.t + ROW * i, y = top + (narrow ? 34 : (ROW - BAR) / 2), x0 = x(0), x1 = Math.max(x(b.value), x0 + 3);
+      const r = Math.min(4, (x1 - x0) / 2, BAR / 2);  // rounded data end, square at the baseline
+      const p = el('path', { d: `M${x0},${y}H${x1 - r}A${r},${r} 0 0 1 ${x1},${y + r}V${y + BAR - r}A${r},${r} 0 0 1 ${x1 - r},${y + BAR}H${x0}Z` }, svg);
+      p.style.fill = b.stripes ? `url(#bar-stripes-${i})` : b.color;
+      const lx = narrow ? m.l : m.l - 12, anchor = narrow ? 'start' : 'end';
+      const l1 = el('text', { x: lx, y: narrow ? top + 13 : y + 8, 'text-anchor': anchor, class: 'bar-label' }, svg);
+      l1.textContent = b.label;
+      const l2 = el('text', { x: lx, y: narrow ? top + 27 : y + 22, 'text-anchor': anchor, class: 'bar-sub' }, svg);
+      l2.textContent = b.sub;
+      const val = el('text', { x: x1 + 8, y: y + BAR / 2 + 4, class: 'bar-value' }, svg);
+      val.textContent = b.valueLabel;
+      if (b.stepLabel) {
+        const st = el('tspan', { class: 'bar-step' }, val);
+        st.textContent = `  ${b.stepLabel}`;
+      }
+      const hit = el('rect', { x: 0, y: top, width: W, height: ROW, fill: 'transparent' }, svg);
+      hit.addEventListener('pointermove', () => {
+        const s = plot.clientWidth / W;
+        tip.show(Math.min(x1, W - m.r) * s, y * s, b.head, b.rows);
+      });
+      hit.addEventListener('pointerleave', () => tip.hide());
+    });
+  };
+  new ResizeObserver(draw).observe(plot);
+}
+
 // ── The page's charts ─────────────────────────────────────────
 function charts() {
   const D = window.CHART_DATA;
@@ -284,6 +348,31 @@ function charts() {
   };
   errChart('chart-ms-mpjpe', 'mpjpe_mm', ' mm', 1, 'MPJPE');
   errChart('chart-ms-joint', 'joint_mae_deg', '°', 2, 'joint angle error');
+
+  // training time to 0.83, step by step, each bar coloured by where its step comes from
+  const sp = D.mshuman_speed, h9 = document.getElementById('chart-ms-time');
+  if (h9 && sp) {
+    const tLabel = (m) => (m >= 60 ? `${(m / 60).toFixed(1)} h` : `${m >= 10 ? Math.round(m) : m.toFixed(1)} min`);
+    const S2 = 'var(--series-2)', S3 = 'var(--series-3)';
+    const color = { base: S1, theirs: S3, ours: S2, both: S3 };
+    const n = sp.minutes.length, fold = sp.minutes[0] / sp.minutes[n - 1];
+    barChart(h9, {
+      xMax: 270, xTicks: [[0, '0'], [60, '1 h'], [120, '2 h'], [180, '3 h'], [240, '4 h']],
+      legend: [{ name: 'first release', color: S1 }, { name: 'from InstantTrack / BlinkMimic', color: S3 }, { name: 'ours', color: S2 },
+        { name: 'both', cls: 'both' }],
+      bars: sp.minutes.map((v, i) => ({
+        label: sp.label[i], sub: sp.sub[i], value: v, color: color[sp.source[i]],
+        stripes: sp.source[i] === 'both' ? [S3, S2] : null,
+        valueLabel: tLabel(v),
+        stepLabel: i === 0 ? '' : `${(sp.minutes[i - 1] / v).toFixed(1)}× faster` + (i === n - 1 ? `, ${Math.round(fold)}× in all` : ''),
+        head: sp.step[i],
+        rows: [{ name: `to 0.83, at iteration ${sp.iteration[i].toLocaleString('en-US')} (${sp.runs[i]})`, value: tLabel(v), color: color[sp.source[i]] },
+          { name: 'per iteration', value: `${sp.s_per_it[i].toFixed(2)} s` }],
+      })),
+      aria: 'Training time to a held-out normalized return of 0.83 on MS-Human-700, step by step: ' +
+        sp.minutes.map((v, i) => `${sp.label[i]} (${sp.sub[i]}) ${tLabel(v)}`).join('; ') + `; ${Math.round(fold)} times faster in all`,
+    });
+  }
 }
 
 // ── MS-Human-700 clip gallery: pick a kind of motion, then one of its clips ─────

@@ -62,6 +62,16 @@ against 4.3 hours for the first release. It ports the training speedups of
 muscles, and adds changes of our own. Every change is a runner flag, off by default: `uv run train` without them is
 still the first release's training.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/fast_training_dark.svg">
+    <img src="docs/assets/fast_training_light.svg" width="760" alt="Time to a held-out normalized return of 0.83 on MS-Human-700, step by step: the first release 4.3 hours; InstantTrack and BlinkMimic method changes 1.8 hours; no muscle observations and the updates as CUDA graphs 36 minutes; the collection as a CUDA graph 24 minutes; 1024 environments with overlapped collection 14 minutes; Beta exploration noise 9 minutes; 50 Hz control 6.4 minutes, 40 times faster in all">
+  </picture>
+  <br><sub>The first held-out evaluation at or above 0.83, MS-Human-700 with locked hands, one RTX 5090, warm compile
+  caches. Each step adds to the one above, coloured by where it comes from: InstantTrack and BlinkMimic, ours, or both
+  (striped).</sub>
+</p>
+
 ```bash
 bash scripts/train_blink.sh Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands-No-Muscle-Obs \
     data/mshuman700_kit/kit_kinesis_train.txt --agent.run-name blink --agent.max-hours 0.3333

@@ -16,6 +16,7 @@
   --axis:          #c3c2b7;
   --series-1:      #2a78d6;
   --series-2:      #eb6834;
+  --series-3:      #1baf7a;
   --series-1-wash: rgba(42, 120, 214, 0.10);
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -42,6 +43,7 @@
     --axis:          #383835;
     --series-1:      #3987e5;
     --series-2:      #d95926;
+    --series-3:      #199e70;
     --series-1-wash: rgba(57, 135, 229, 0.14);
   }
 }
@@ -59,6 +61,7 @@
   --axis:          #383835;
   --series-1:      #3987e5;
   --series-2:      #d95926;
+  --series-3:      #199e70;
   --series-1-wash: rgba(57, 135, 229, 0.14);
 }
 
@@ -191,6 +194,14 @@ thead th { color: var(--text-muted); font-weight: 500; font-size: 0.82rem; }
 .chart .ref-line { stroke: var(--text-light); stroke-width: 1; }
 .chart .ref-label, .chart .direct-label { fill: var(--text-muted); font-size: 11px; font-family: var(--font-sans); }
 .chart .crosshair { stroke: var(--text-light); stroke-width: 1; }
+.chart.bars { margin: 1.75rem 0 2rem; }
+.chart .bar-label, .chart .bar-sub { paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }  /* a halo over the gridlines */
+.chart .bar-label { fill: var(--text); font-size: 13px; font-weight: 500; font-family: var(--font-sans); }
+.chart .bar-sub { fill: var(--text-muted); font-size: 11px; font-family: var(--font-sans); }
+.chart .bar-value { fill: var(--text); font-size: 12px; font-weight: 600; font-family: var(--font-sans); font-variant-numeric: tabular-nums; }
+.chart .bar-step { fill: var(--text-muted); font-weight: 400; }
+.legend.swatches i { width: 10px; height: 10px; border-radius: 2px; }
+.legend.swatches i.both { background: repeating-linear-gradient(45deg, var(--series-3) 0 2px, var(--series-2) 2px 4px) !important; }
 .legend { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.3rem; }
 .legend span { display: inline-flex; align-items: center; gap: 0.4rem; }
 .legend i { display: inline-block; width: 14px; height: 2px; border-radius: 1px; }
