@@ -1,6 +1,8 @@
 # One training run of the BlinkMimic recipe (scripts/train_blink.sh) on a cloud RTX 5090, the held-out evaluation of
 # every checkpoint running alongside it on the same GPU, the run directory uploaded to a private Hugging Face dataset.
 #
+# Set HF_RESULTS_REPO and KIT_REPO (envs below) to Hugging Face datasets of your own first.
+#
 #   HF_TOKEN=$(cat ~/.cache/huggingface/token) sky launch -c blink-5090 skypilot/train_blink.yaml --secret HF_TOKEN -i 60 --down -y
 #   sky logs blink-5090                                   # the training line every 250 iterations, the sweeps, the evaluations
 #   ssh blink-5090 tail -3 sky_workdir/logs/train_blink_ms700_s0.out
@@ -50,6 +52,9 @@ envs:
   # extra ms-eval flags matching training's task settings: the preset trains at 50 Hz (scripts/train_blink.sh), so its
   # policies are evaluated at 50 Hz; a 100 Hz run sets EVAL_ARGS=" "
   EVAL_ARGS: "--decimation 10 --stride 10"
+  # your own private Hugging Face datasets: HF_RESULTS_REPO receives the run directories and the compile caches;
+  # KIT_REPO holds mshuman700_kit.tgz, the KIT clips you retargeted to MS-Human-700 (README: ms-retarget-myofullbody),
+  # which AMASS's license does not allow to share
   HF_RESULTS_REPO: YOUR_HF_USER/supermimic-runs
   KIT_REPO: YOUR_HF_USER/mshuman700-kit
   MSHUMAN_COMMIT: 2d686957aefd5739cf4d2859a6acfd94c8f84400
@@ -74,6 +79,11 @@ setup: |
     git -C third_party/MS-Human-700 checkout -q $MSHUMAN_COMMIT
   fi
   if [ ! -f data/mshuman700_kit/kit_kinesis_train.txt ]; then
+    case "$KIT_REPO" in YOUR_HF_USER/*)
+      echo "no MS-Human-700 clips: retarget MuscleMimic's KIT clips (README, ms-retarget-myofullbody), pack data/mshuman700_kit"
+      echo "as mshuman700_kit.tgz, upload it to a private Hugging Face dataset of yours and set KIT_REPO (--env KIT_REPO=...)"
+      exit 1;;
+    esac
     rm -rf /tmp/kit && mkdir -p /tmp/kit data
     curl -fsSL --retry 5 -H "Authorization: Bearer $HF_TOKEN" -o /tmp/kit/kit.tgz \
       https://huggingface.co/datasets/$KIT_REPO/resolve/main/mshuman700_kit.tgz

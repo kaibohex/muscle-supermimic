@@ -10,7 +10,8 @@
 #   bash scripts/compile_cache.sh load <name>
 set -euo pipefail
 cd ~/sky_workdir
-REPO=${HF_RESULTS_REPO:-YOUR_HF_USER/supermimic-runs}
+REPO=${HF_RESULTS_REPO:-}
+case "$REPO" in ""|YOUR_HF_USER/*) echo "compile_cache: set HF_RESULTS_REPO to a Hugging Face dataset of yours"; exit 1;; esac
 NAME=${2:?usage: bash scripts/compile_cache.sh save|load <name>}
 ARCHIVE=/tmp/compile_cache_$NAME.tar.zst
 DIRS=("/tmp/torchinductor_$(whoami)" "$HOME/.cache/warp" "$HOME/.nv/ComputeCache" "$HOME/.triton")
