@@ -18,8 +18,8 @@
     <h1 class="title">muscle-supermimic</h1>
     <!-- EDIT: the training time may change as the runs improve -->
     <p class="subtitle">Whole-body motion tracking for musculoskeletal humanoids with one differentiable world model, on one RTX&nbsp;5090
-      <span class="speedup">in <del>4&nbsp;hours</del> <del class="step">14&nbsp;min</del> <ins>9&nbsp;min<sup>*</sup></ins></span></p>
-    <p class="subtitle-note">* MS-Human-700 reaches a normalized return of 0.83 on the 108 held-out clips in 9 min of training
+      <span class="speedup">in <del>4&nbsp;hours</del> <del class="step">14&nbsp;min</del> <del class="step step2">9&nbsp;min</del> <ins>6.5&nbsp;min<sup>*</sup></ins></span></p>
+    <p class="subtitle-note">* MS-Human-700 reaches a normalized return of 0.83 on the 108 held-out clips in 6.5 min of training
       (two seeds), with the compile caches warmed up (a cold machine adds its compilation time). Code coming soon.</p>
     <div class="author-list">
       <span class="author">Kaibo He</span>
@@ -80,6 +80,7 @@
   <div class="container narrow">
     <h2>News</h2>
     <ul class="news">
+      <li><span class="news-date">2026-11</span><span>Training sped up again, from 9 to 6.5 minutes.</span></li>
       <li><span class="news-date">2026-11</span><span>Training sped up again, from 14 to 9 minutes: MS-Human-700 passes a
         normalized return of 0.83 on the 108 held-out clips after 9 minutes on one RTX&nbsp;5090 with both of two seeds,
         with the compile caches warmed up. Code coming soon.</span></li>
@@ -216,8 +217,9 @@
     <p>One run of MS-Human-700 with locked hands (694 muscles) on MuscleMimic's KIT split, 972 training clips (1.5 h of
       motion) retargeted to it, 4096 parallel environments, MuscleMimic's solver settings (Euler, 100 / 50 iterations), on one
       RTX 5090. This is a snapshot at iteration 16800 (10.6 hours), with every
-      checkpoint up to iteration 16000 evaluated. The orange curve on the held-out chart is the current fastest recipe
-      (code coming soon).</p>
+      checkpoint up to iteration 16000 evaluated. The orange curves on the held-out charts are the current fastest recipe
+      (code coming soon); the tracking errors are averaged over every frame a clip is tracked before it ends or fails, and
+      for the first release only its two published checkpoints (iterations 10000 and 16000) are measured.</p>
     <div class="stats">
       <div class="stat"><div class="stat-label">Training episode length, iterations 16100–16800</div><div class="stat-value">264<small>steps (2.6 s)</small></div></div>
       <div class="stat"><div class="stat-label">Training episodes ending in a failure, the same iterations</div><div class="stat-value">0.1 %</div></div>
@@ -232,6 +234,16 @@
       <div class="chart" id="chart-ms-eval">
         <div class="chart-title">Normalized return on the 108 held-out clips</div>
         <div class="chart-sub">per evaluated checkpoint, every clip once from its first frame</div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="chart" id="chart-ms-mpjpe">
+        <div class="chart-title">MPJPE on the 108 held-out clips</div>
+        <div class="chart-sub">mm, the 17 tracked bodies' mean distance from the reference, relative to the pelvis; lower is better</div>
+      </div>
+      <div class="chart" id="chart-ms-joint">
+        <div class="chart-title">Joint angle error on the 108 held-out clips</div>
+        <div class="chart-sub">degrees, mean absolute error of the 37 independent joints (counting the 42 coupled ones would lower it); lower is better</div>
       </div>
     </div>
     <h3>Training clips at iteration 10000</h3>

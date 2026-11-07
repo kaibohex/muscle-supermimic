@@ -26,6 +26,7 @@ the excitation of every muscle at 100 Hz to follow motion-capture clips.
 
 ## News
 
+- **[2026-11]** Training sped up again, from 9 to 6.5 minutes.
 - **[2026-11]** Training sped up again, from 14 to 9 minutes: MS-Human-700 passes a normalized return of 0.83 on the
   108 held-out clips after 9 minutes on one RTX 5090 with both of two seeds, with the compile caches warmed up. Code
   coming soon.

@@ -98,16 +98,18 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .title { font-size: clamp(1.6rem, 4vw, 2.4rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; margin-bottom: 0.6rem; font-family: var(--font-mono); }
 .subtitle { font-size: clamp(1.05rem, 2.2vw, 1.3rem); font-weight: 400; color: var(--text-muted); max-width: 40rem; margin: 0 auto 0.9rem; line-height: 1.4; }
 /* "4 hours" struck through by a diagonal line drawn in, then "14 min" fades in and is struck through in turn,
-   then "9 min" fades in */
+   then "9 min" likewise, then "6.5 min" fades in */
 .speedup { white-space: nowrap; }
 .speedup del { position: relative; display: inline-block; text-decoration: none; color: var(--text-light); }
 .speedup del::after { content: ''; position: absolute; left: -0.1em; right: -0.1em; top: 55%; height: 2px; border-radius: 1px;
   background: var(--series-2); transform: rotate(-12deg); clip-path: inset(0 0 0 0);
-  animation: speedup-strike 0.45s ease-out 0.6s both; }
-.speedup del.step { margin-left: 0.2em; animation: speedup-in 0.4s ease-out 1.05s both, speedup-dim 0.45s ease-out 1.65s both; }
-.speedup del.step::after { animation-delay: 1.65s; }
+  animation: speedup-strike 0.12s ease-out 0.6s both; }
+.speedup del.step { margin-left: 0.2em; animation: speedup-in 0.25s ease-out 0.72s both, speedup-dim 0.12s ease-out 1.07s both; }
+.speedup del.step::after { animation-delay: 1.07s; }
+.speedup del.step2 { animation: speedup-in 0.25s ease-out 1.19s both, speedup-dim 0.12s ease-out 1.54s both; }
+.speedup del.step2::after { animation-delay: 1.54s; }
 .speedup ins { display: inline-block; margin-left: 0.2em; text-decoration: none; font-weight: 600; color: var(--text);
-  animation: speedup-in 0.4s ease-out 2.15s both; }
+  animation: speedup-in 0.25s ease-out 1.66s both; }
 .speedup ins sup { font-size: 0.6em; font-weight: 500; margin-left: 1px; }
 @keyframes speedup-strike { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 @keyframes speedup-in { from { opacity: 0; transform: translateY(0.25em); } to { opacity: 1; transform: none; } }
