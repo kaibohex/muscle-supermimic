@@ -18,6 +18,10 @@
 : "${MAX_HOURS:=0.3333}"
 # COMPILE_CACHE: load this saved compile cache (scripts/compile_cache.sh) before training, outside its clock
 : "${COMPILE_CACHE:=}"
+# EVAL_ARGS: extra ms-eval flags that must match training's task settings, e.g. "--decimation 10 --stride 10" for a run trained
+# with --env.decimation 10 --env.commands.motion.stride 10 (without them a 50 Hz policy is evaluated at the task's 100 Hz).
+# The default matches scripts/train_blink.sh's preset (50 Hz since 2026-11-06); a 100 Hz run sets EVAL_ARGS=" "
+: "${EVAL_ARGS:=--decimation 10 --stride 10}"
 set -uo pipefail
 cd ~/sky_workdir
 export PATH=$HOME/.local/bin:$PATH MUJOCO_GL=disable PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
@@ -30,7 +34,7 @@ if [ "$EVAL_DURING" = "1" ]; then
   ( sleep 300
     RUN=$(ls -dt logs/rsl_rl/$EXPERIMENT/*_$RUN_NAME 2>/dev/null | head -1)
     [ -n "$RUN" ] && exec .venv/bin/python -m muscle_supermimic.tasks.tracking.scripts.evaluate --task $TASK --run-dir $RUN \
-      --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN --batch $EVAL_BATCH --watch > logs/eval_$RUN_NAME.out 2>&1
+      --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN --batch $EVAL_BATCH $EVAL_ARGS --watch > logs/eval_$RUN_NAME.out 2>&1
   ) &
   EVAL_PID=$!
 fi
@@ -54,7 +58,7 @@ RUN=$(ls -dt logs/rsl_rl/$EXPERIMENT/*_$RUN_NAME 2>/dev/null | head -1)
 if [ -n "$RUN" ]; then
   if [ -n "$EVAL_PID" ]; then sleep 120; kill $EVAL_PID 2>/dev/null; fi  # let the watcher finish the last checkpoint, then evaluate any it missed
   .venv/bin/python -m muscle_supermimic.tasks.tracking.scripts.evaluate --task $TASK --run-dir $RUN \
-    --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN --batch $EVAL_BATCH >> logs/eval_$RUN_NAME.out 2>&1
+    --motion-file $TEST_MOTION --device cuda:0 --skip-before-min $EVAL_SKIP_MIN --batch $EVAL_BATCH $EVAL_ARGS >> logs/eval_$RUN_NAME.out 2>&1
   grep "^\[eval\]" logs/eval_$RUN_NAME.out | tail -5
   echo "== upload $RUN -> $HF_RESULTS_REPO/$RUN_NAME $(date -u +%FT%TZ)"
   INC=(--include "*.csv" --include "*.json" --include "params/*")  # hf upload takes one pattern per --include

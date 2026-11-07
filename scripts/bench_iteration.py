@@ -43,6 +43,7 @@ def main():
     ap.add_argument("--set", nargs="*", default=[], metavar="KEY=VALUE", help="runner cfg overrides, e.g. pi_batch=2048")
     ap.add_argument("--env-set", nargs="*", default=[], metavar="KEY=VALUE", help="motion command cfg overrides, e.g. bin_fix=true")
     ap.add_argument("--sim-set", nargs="*", default=[], metavar="KEY=VALUE", help="MuJoCo solver cfg overrides, e.g. iterations=50")
+    ap.add_argument("--decimation", type=int, default=None, help="physics substeps per control step (task: 5, i.e. 100 Hz; 10: 50 Hz)")
     ap.add_argument("--device", default="cuda:0" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--profile", type=int, default=0,
                     help="after the timing, profile this many more iterations (best without CUDA graphs) and print the top CUDA kernels")
@@ -64,6 +65,8 @@ def main():
     for kv in args.sim_set:
         k, v = kv.split("=", 1)
         setattr(cfg.sim.mujoco, k, parse_override(getattr(cfg.sim.mujoco, k), v))
+    if args.decimation:
+        cfg.decimation = args.decimation
     cfg.scene.num_envs = N = args.num_envs
     env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=cfg, device=args.device))
     rl_default = load_rl_cfg(args.task)

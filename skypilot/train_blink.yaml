@@ -47,6 +47,9 @@ envs:
   # a compile cache saved with scripts/compile_cache.sh save <name> (HF_RESULTS_REPO/compile_cache/<name>.tar.zst),
   # loaded before training so that a new machine does not compile inside the training clock; "" compiles
   COMPILE_CACHE: ""
+  # extra ms-eval flags matching training's task settings: the preset trains at 50 Hz (scripts/train_blink.sh), so its
+  # policies are evaluated at 50 Hz; a 100 Hz run sets EVAL_ARGS=" "
+  EVAL_ARGS: "--decimation 10 --stride 10"
   HF_RESULTS_REPO: YOUR_HF_USER/supermimic-runs
   KIT_REPO: YOUR_HF_USER/mshuman700-kit
   MSHUMAN_COMMIT: 2d686957aefd5739cf4d2859a6acfd94c8f84400

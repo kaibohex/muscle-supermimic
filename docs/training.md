@@ -97,6 +97,18 @@ held-out return of 0.83 at 8.5 minutes, 0.90 at 10-11 minutes and track all 108 
 compilation unless it loads a saved compile cache (below). A higher learning rate (a 2x policy phase, or a 6e-4
 base rate) stalls about half of the runs at 0.3-0.4, so keep 1x; decide recipe changes on at least two seeds.
 
+**50 Hz control (2026-11-06, the preset since then).** The policy acts every 20 ms: `--env.decimation 10` (2 ms
+physics, 10 substeps), every step-counted setting rescaled to keep its duration (`--env.commands.motion.stride 10`,
+`--agent.horizon 16`, `--agent.gamma 0.98 --agent.lam 0.9`, `--agent.buffer-steps 500`, `--agent.wm-window 4`,
+`--agent.utd 0.8`: 25 ms of motion per iteration, as before), and the exploration noise scaled to the same variance per
+second (`--agent.action-noise 0.0707`). An iteration takes 0.14 s on the RTX 5090 instead of 0.207. Over 20-minute runs
+(trials 45 and 46 against 34 and 35), two seeds reach 0.83 held-out at 6.4 minutes (100 Hz: 8.9 / 9.0), 0.90 at
+8.1 / 8.8 (11.5 / 10.8), best 0.944 / 0.945 (0.939 / 0.936), and track all 108 test clips in a similar share of
+checkpoints. Keeping the noise at 0.1 weakens full tracking (trials 42, 43); keeping the 100 Hz step settings instead
+(trial 44) tracks every clip most consistently but runs at 3.5 it/s. **Evaluate at the training rate:** `ms-eval
+--decimation 10 --stride 10` (the default `EVAL_ARGS` of `scripts/run_trial.sh`); without them a 50 Hz policy runs at the
+task's 100 Hz. The 100 Hz settings are listed in `scripts/train_blink.sh`'s header.
+
 **Ported so far** (`scripts/train_blink.sh <task> <motion-file> [train flags]` sets all of it):
 
 | change | flag | from |

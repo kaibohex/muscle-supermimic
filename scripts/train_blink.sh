@@ -16,6 +16,16 @@
 # outside [0, 1]). First 0.83 held-out return at 8.5 minutes on both seeds (the published baseline: 4.3 hours). Keep
 # the policy learning rate at 1x: a 2x phase or a 6e-4 base rate stalls about half of the runs at 0.3-0.4.
 #
+# Since 2026-11-06 the policy acts at 50 Hz (Trials 45 and 46): 10 physics substeps per control step instead of 5, every
+# step-counted setting rescaled to keep its duration (goal frames 10 steps = 0.2 s apart, 16 imagined steps = 0.32 s,
+# gamma 0.98 and lambda 0.90, a 500-step = 10 s buffer, 4-step = 80 ms world-model windows, 1.25 simulator steps =
+# 25 ms of motion per iteration), and the exploration noise scaled by 1/sqrt(2) to 0.0707, so that the variance injected
+# per second of motion is the 100 Hz recipe's. First 0.83 held-out at 6.4 minutes on both seeds (100 Hz: 8.9 / 9.0),
+# best 0.944 / 0.945. Evaluate these policies at the same rate: ms-eval --decimation 10 --stride 10 (run_trial.sh's
+# EVAL_ARGS default); the compile cache for it is ms700_1024_beta_50hz. For 100 Hz append --env.decimation 5
+# --env.commands.motion.stride 20 --agent.horizon 32 --agent.gamma 0.99 --agent.lam 0.95 --agent.buffer-steps 1000
+# --agent.wm-window 8 --agent.utd 0.4 --agent.action-noise 0.1.
+#
 # Usage: bash scripts/train_blink.sh <task> <motion-file> [more train flags, e.g. --agent.run-name blink_s0 --agent.seed 1]
 #   bash scripts/train_blink.sh Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands data/mshuman700_kit/kit_kinesis_train.txt --agent.run-name blink
 # Later flags override earlier ones, so e.g. --agent.pi-batch 4096 after the preset restores that setting. mjlab's CLI
@@ -39,5 +49,7 @@ BLINK=(
   --agent.eprobe-share 0
   --env.commands.motion.bin-fix True --env.commands.motion.fail-reset 0.3
   --agent.save-interval 250 --agent.max-iterations 20000
+  --env.decimation 10 --env.commands.motion.stride 10 --agent.horizon 16 --agent.gamma 0.98 --agent.lam 0.9
+  --agent.buffer-steps 500 --agent.wm-window 4 --agent.utd 0.8 --agent.action-noise 0.0707
 )
 exec ${TRAIN:-uv run train} "$TASK" --env.commands.motion.motion-file "$MOTION" "${BLINK[@]}" "$@"
