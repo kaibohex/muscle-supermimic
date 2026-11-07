@@ -101,7 +101,7 @@ pre code { background: none; border: 0; padding: 0; font-size: inherit; }
 .title { font-size: clamp(1.6rem, 4vw, 2.4rem); font-weight: 700; line-height: 1.2; letter-spacing: -0.02em; margin-bottom: 0.6rem; font-family: var(--font-mono); }
 .subtitle { font-size: clamp(1.05rem, 2.2vw, 1.3rem); font-weight: 400; color: var(--text-muted); max-width: 40rem; margin: 0 auto 0.9rem; line-height: 1.4; }
 /* "4 hours" struck through by a diagonal line drawn in, then "14 min" fades in and is struck through in turn,
-   then "9 min" likewise, then "6.5 min" fades in */
+   then "9 min" likewise, then "6.4 min" fades in */
 .speedup { white-space: nowrap; }
 .speedup del { position: relative; display: inline-block; text-decoration: none; color: var(--text-light); }
 .speedup del::after { content: ''; position: absolute; left: -0.1em; right: -0.1em; top: 55%; height: 2px; border-radius: 1px;

@@ -26,8 +26,9 @@ the excitation of every muscle at 100 Hz to follow motion-capture clips.
 
 ## News
 
-- **[2026-11]** Test-time action refinement through the world model: 0.83 on the held-out clips after 5.2 minutes of
-  training, and the 20-minute policy's MPJPE from 18 to 14 mm. See [Fast training](#fast-training).
+- **[2026-11]** Not only fast but also accurate: after 20 minutes of training the held-out MPJPE is 18 mm (the first
+  release after 10 hours: 22 mm), and 14 mm with test-time action refinement through the world model, which also
+  reaches 0.83 after 5.2 minutes. See [Fast training](#fast-training).
 - **[2026-11]** The code of the fast training recipe is out: see [Fast training](#fast-training).
 - **[2026-11]** Training sped up again, from 9 to 6.5 minutes.
 - **[2026-11]** Training sped up again, from 14 to 9 minutes: MS-Human-700 passes a normalized return of 0.83 on the
@@ -58,7 +59,9 @@ The checkpoints of iterations 10000 and 16000 of both runs are on Hugging Face:
 
 `scripts/train_blink.sh` trains MS-Human-700 (locked hands, without muscle observations) to a normalized return of
 0.83 on the 108 held-out clips in **6.4 minutes** on one RTX 5090, with both of two seeds (best 0.944 / 0.945),
-against 4.3 hours for the first release. It ports the training speedups of
+against 4.3 hours for the first release. It is also more accurate: after 20 minutes of training the two seeds track
+the held-out clips with an MPJPE of 18.3 mm and a joint angle error of 3.4 degrees, against 22.4 mm and 5.1 degrees
+for the first release after 10 hours, and 13.6 mm and 3.0 degrees with test-time refinement (below). It ports the training speedups of
 [BlinkMimic](https://github.com/fuyichen0725/blinkmimic) (which builds on
 [InstantTrack](https://github.com/Huy-Quang-Dao/instantTrack)), changes the three that do not transfer to 694
 muscles, and adds changes of our own. Every change is a runner flag, off by default: `uv run train` without them is
