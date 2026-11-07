@@ -15,3 +15,6 @@ data/musclemimic/
 *.pt
 *.npz
 *.mp4
+data/lafan1_bvh/
+data/lafan1_myofullbody/
+data/lafan1_mshuman700/
