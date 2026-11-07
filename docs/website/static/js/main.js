@@ -315,18 +315,22 @@ function charts() {
   if (h7 && ms) lineChart(h7, { x: ms.train.wall_h, xDomain: [0, msEnd], yDomain: [0, lenTop(ms.train.ep_len)], xLabel: H_LABEL, xName: '', xFmt: hFmt, iter: iters(ms.train),
     series: [{ name: 'steps', values: ms.train.ep_len, it: ms.train.iteration, color: S1 }], bands: wmBand(at(ms.train, 500)), yFmt: (v) => v.toFixed(0),
     aria: `Episode length climbs past 250 steps within 2 hours of training and reaches ${ms.train.ep_len.at(-1).toFixed(0)}` });
-  // held-out return: the first release's run and, in orange on the same log time axis, the current fastest recipe
-  const h8 = document.getElementById('chart-ms-eval'), fast = D.mshuman_fast?.eval;
+  // held-out return: the first release's run and, on the same log time axis, the current fastest recipe (orange) and
+  // its checkpoints with the test-time action refinement (green)
+  const h8 = document.getElementById('chart-ms-eval'), fast = D.mshuman_fast?.eval, refine = D.mshuman_fast?.refine;
   const tFmt = (v) => (v < 1 ? `${(v * 60).toFixed(1).replace(/\.0$/, '')} min` : `${v.toFixed(1).replace(/\.0$/, '')} h`);
   const first = (e, r) => e.wall_h[e.norm_return.findIndex((v) => v >= r)];
   if (h8 && ms && fast) lineChart(h8, { xDomain: [0.05, msEnd], xLog: true, yDomain: [0, 1], xName: '', xFmt: tFmt,
     xLabel: 'wall-clock training time (log scale)', xTicks: [[0.05, '3 min'], [1 / 6, '10 min'], [0.5, '30 min'], [1, '1 h'], [3, '3 h'], [10, '10 h']],
     series: [{ name: 'first release', x: ms.eval.wall_h, values: ms.eval.norm_return, it: ms.eval.iteration, color: S1, dots: true },
-      { name: 'fastest recipe', x: fast.wall_h, values: fast.norm_return, it: fast.iteration, color: 'var(--series-2)', dots: true }],
+      { name: 'fastest recipe', x: fast.wall_h, values: fast.norm_return, it: fast.iteration, color: 'var(--series-2)', dots: true },
+      ...(refine ? [{ name: '+ test-time refinement', x: refine.wall_h, values: refine.norm_return, it: refine.iteration, color: 'var(--series-3)', dots: true }] : [])],
     refLines: [{ y: 0.83, label: '0.83', anchor: 'start' }], yFmt: (v) => v.toFixed(2),
     aria: `Held-out normalized return: the first release passes 0.83 after ${first(ms.eval, 0.83).toFixed(1)} hours of training and reaches ` +
       `${Math.max(...ms.eval.norm_return).toFixed(2)}; the fastest recipe passes 0.83 after ${(first(fast, 0.83) * 60).toFixed(1)} minutes ` +
-      `and reaches ${Math.max(...fast.norm_return).toFixed(2)} within ${Math.round(fast.wall_h.at(-1) * 60)} minutes` });
+      `and reaches ${Math.max(...fast.norm_return).toFixed(2)} within ${Math.round(fast.wall_h.at(-1) * 60)} minutes` +
+      (refine ? `; with the test-time refinement of its actions it passes 0.83 after ${(first(refine, 0.83) * 60).toFixed(1)} minutes ` +
+        `and reaches ${Math.max(...refine.norm_return).toFixed(2)}` : '') });
   else if (h8 && ms) lineChart(h8, { x: ms.eval.wall_h, xDomain: [0, msEnd], yDomain: [0, 1], xLabel: H_LABEL, xName: '', xFmt: hFmt, iter: iters(ms.train),
     series: [{ name: 'normalized return', values: ms.eval.norm_return, it: ms.eval.iteration, color: S1, dots: true }], yFmt: (v) => v.toFixed(2),
     aria: `Held-out normalized return rises to ${ms.eval.norm_return.at(-1).toFixed(2)} after ${ms.eval.wall_h.at(-1).toFixed(1)} hours of training` });
@@ -335,16 +339,19 @@ function charts() {
   const errChart = (id, key, unit, digits, what) => {
     const h = document.getElementById(id);
     if (!h || !err || !fast?.[key]) return;
-    const top = Math.ceil(Math.max(...err[key], ...fast[key]) * 1.15 / 5) * 5;
+    const top = Math.ceil(Math.max(...err[key], ...fast[key], ...(refine?.[key] ?? [])) * 1.15 / 5) * 5;
     const v = (a, i) => `${a[i].toFixed(digits)}${unit}`;
     lineChart(h, { xDomain: [0.05, msEnd], xLog: true, yDomain: [0, top], xName: '', xFmt: tFmt,
       xLabel: 'wall-clock training time (log scale)', xTicks: [[0.05, '3 min'], [1 / 6, '10 min'], [0.5, '30 min'], [1, '1 h'], [3, '3 h'], [10, '10 h']],
       series: [{ name: 'first release', x: err.wall_h, values: err[key], it: err.iteration, color: S1, dots: true },
-        { name: 'fastest recipe', x: fast.wall_h, values: fast[key], it: fast.iteration, color: 'var(--series-2)', dots: true }],
+        { name: 'fastest recipe', x: fast.wall_h, values: fast[key], it: fast.iteration, color: 'var(--series-2)', dots: true },
+        ...(refine?.[key] ? [{ name: '+ test-time refinement', x: refine.wall_h, values: refine[key], it: refine.iteration, color: 'var(--series-3)', dots: true }] : [])],
       yFmt: (y) => `${y.toFixed(digits)}${unit}`,
       aria: `Held-out ${what}: the first release ${v(err[key], 0)} at ${err.wall_h[0].toFixed(1)} hours and ${v(err[key], err[key].length - 1)} at ` +
         `${err.wall_h.at(-1).toFixed(1)} hours of training; the fastest recipe ${v(fast[key], fast[key].length - 1)} after ` +
-        `${Math.round(fast.wall_h.at(-1) * 60)} minutes, lowest ${Math.min(...fast[key]).toFixed(digits)}${unit}` });
+        `${Math.round(fast.wall_h.at(-1) * 60)} minutes, lowest ${Math.min(...fast[key]).toFixed(digits)}${unit}` +
+        (refine?.[key] ? `; with the test-time refinement ${v(refine[key], refine[key].length - 1)} after ` +
+          `${Math.round(refine.wall_h.at(-1) * 60)} minutes, lowest ${Math.min(...refine[key]).toFixed(digits)}${unit}` : '') });
   };
   errChart('chart-ms-mpjpe', 'mpjpe_mm', ' mm', 1, 'MPJPE');
   errChart('chart-ms-joint', 'joint_mae_deg', '°', 2, 'joint angle error');

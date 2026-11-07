@@ -26,6 +26,8 @@ the excitation of every muscle at 100 Hz to follow motion-capture clips.
 
 ## News
 
+- **[2026-11]** Test-time action refinement through the world model: 0.83 on the held-out clips after 5.2 minutes of
+  training, and the 20-minute policy's MPJPE from 18 to 14 mm. See [Fast training](#fast-training).
 - **[2026-11]** The code of the fast training recipe is out: see [Fast training](#fast-training).
 - **[2026-11]** Training sped up again, from 9 to 6.5 minutes.
 - **[2026-11]** Training sped up again, from 14 to 9 minutes: MS-Human-700 passes a normalized return of 0.83 on the
@@ -65,11 +67,12 @@ still the first release's training.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/fast_training_dark.svg">
-    <img src="docs/assets/fast_training_light.svg" width="760" alt="Time to a held-out normalized return of 0.83 on MS-Human-700, step by step: the first release 4.3 hours; InstantTrack and BlinkMimic method changes 1.8 hours; no muscle observations and the updates as CUDA graphs 36 minutes; the collection as a CUDA graph 24 minutes; 1024 environments with overlapped collection 14 minutes; Beta exploration noise 9 minutes; 50 Hz control 6.4 minutes, 40 times faster in all">
+    <img src="docs/assets/fast_training_light.svg" width="760" alt="Time to a held-out normalized return of 0.83 on MS-Human-700, step by step: the first release 4.3 hours; InstantTrack and BlinkMimic method changes 1.8 hours; no muscle observations and the updates as CUDA graphs 36 minutes; the collection as a CUDA graph 24 minutes; 1024 environments with overlapped collection 14 minutes; Beta exploration noise 9 minutes; 50 Hz control 6.4 minutes; the same checkpoints with test-time action refinement 5.2 minutes, 49 times faster in all">
   </picture>
   <br><sub>The first held-out evaluation at or above 0.83, MS-Human-700 with locked hands, one RTX 5090, warm compile
   caches. Each step adds to the one above, coloured by where it comes from: InstantTrack and BlinkMimic, ours, or both
-  (striped).</sub>
+  (striped). The last bar is not a training change: the same checkpoints evaluated with the test-time action refinement
+  described below.</sub>
 </p>
 
 ```bash
@@ -119,6 +122,14 @@ unless it loads caches saved with `scripts/compile_cache.sh`.
   duration (horizon, discount, buffer, world-model windows, goal spacing, simulator steps per iteration), and the
   exploration noise scaled by 1/sqrt(2) to keep its variance per second.
 
+**Test-time action refinement** (not a training change): at every control step, the deployed policy's action is moved
+by five normalized gradient-ascent steps on the world model's imagined return (the training horizon, the analytic
+rewards and the bootstrapped value, as the policy update computes it) and the iterate of highest imagined return is
+executed. On the 108 held-out clips it brings the 20-minute policies from 0.940 to 0.965 (two seeds; no failed clip),
+the MPJPE from 18.3 to 13.6 mm and the joint angle error from 3.4 to 3.0 degrees, and earlier checkpoints pass 0.83:
+after 4.6 and 5.2 minutes of training for the two seeds. It costs 0.16 s per control step for the 108 clips on one
+RTX 5090, against 0.04 s for the policy alone. The script is not in the release yet.
+
 Each step adds to the one above (MS-Human-700 with locked hands, one RTX 5090, warm compile caches):
 
 | | first 0.83 on the held-out clips | s / iteration |
@@ -130,8 +141,9 @@ Each step adds to the one above (MS-Human-700 with locked hands, one RTX 5090, w
 | + 1024 environments, the collection concurrent with the updates | 14 min | 0.24 |
 | + Beta exploration noise, no rematerialization of the imagined steps | 9 min | 0.21 |
 | + 50 Hz control | 6.4 min | 0.14 |
+| + test-time action refinement (evaluation only: five gradient steps through the world model per control step) | 5.2 min | 0.14 |
 
-The last two rows hold for two seeds each, the others are single runs.
+The last three rows hold for two seeds each (the refinement: 4.6 and 5.2 min), the others are single runs.
 [docs/training.md](docs/training.md) ("BlinkMimic recipe") lists every flag, what each setting does, and the
 iteration's time piece by piece.
 

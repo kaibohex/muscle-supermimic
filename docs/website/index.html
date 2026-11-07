@@ -81,6 +81,8 @@
   <div class="container narrow">
     <h2>News</h2>
     <ul class="news">
+      <li><span class="news-date">2026-11</span><span>Test-time action refinement through the world model: 0.83 on the
+        held-out clips after 5.2 minutes of training, and the 20-minute policy's MPJPE from 18 to 14 mm.</span></li>
       <li><span class="news-date">2026-11</span><span>The code of the fast training recipe is out: see
         <a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">Fast training</a>
         in the README.</span></li>
@@ -224,13 +226,17 @@
       motion) retargeted to it, 4096 parallel environments, MuscleMimic's solver settings (Euler, 100 / 50 iterations), on one
       RTX 5090. This is a snapshot at iteration 16800 (10.6 hours), with every
       checkpoint up to iteration 16000 evaluated. The orange curves on the held-out charts are the current fastest recipe
-      (<a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">code</a>); the
-      tracking errors are averaged over every frame a clip is tracked before it ends or fails, and
-      for the first release only its two published checkpoints (iterations 10000 and 16000) are measured.</p>
+      (<a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">code</a>), the
+      green ones the same checkpoints with test-time action refinement: at every control step the policy's action is moved
+      by five gradient steps on the world model's imagined return and the best is kept, at 0.16 s per control step for the
+      108 clips on a 5090 against 0.04 s for the policy alone. The tracking errors are averaged over every frame a clip
+      is tracked before it ends or fails, and for the first release only its two published checkpoints (iterations 10000
+      and 16000) are measured.</p>
     <div class="chart bars" id="chart-ms-time">
       <div class="chart-title">Training time to a normalized return of 0.83 on the 108 held-out clips</div>
       <div class="chart-sub">MS-Human-700 with locked hands, one RTX 5090, warm compile caches, the first evaluation at or above
-        0.83. Each step adds to the one above, coloured by where it comes from: <a href="https://github.com/Huy-Quang-Dao/instantTrack" target="_blank" rel="noopener">InstantTrack</a> and <a href="https://github.com/fuyichen0725/blinkmimic" target="_blank" rel="noopener">BlinkMimic</a>, ours, or both.</div>
+        0.83. Each step adds to the one above, coloured by where it comes from: <a href="https://github.com/Huy-Quang-Dao/instantTrack" target="_blank" rel="noopener">InstantTrack</a> and <a href="https://github.com/fuyichen0725/blinkmimic" target="_blank" rel="noopener">BlinkMimic</a>, ours, or both. The last bar is not a training change: the same checkpoints evaluated with the test-time
+        action refinement.</div>
     </div>
     <div class="stats">
       <div class="stat"><div class="stat-label">Training episode length, iterations 16100–16800</div><div class="stat-value">264<small>steps (2.6 s)</small></div></div>
