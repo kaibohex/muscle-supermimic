@@ -227,9 +227,11 @@
       RTX 5090. This is a snapshot at iteration 16800 (10.6 hours), with every
       checkpoint up to iteration 16000 evaluated. The orange curves on the held-out charts are the current fastest recipe
       (<a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">code</a>), the
-      green ones the same checkpoints with test-time action refinement: at every control step the policy's action is moved
-      by five gradient steps on the world model's imagined return and the best is kept, at 0.16 s per control step for the
-      108 clips on a 5090 against 0.04 s for the policy alone. The tracking errors are averaged over every frame a clip
+      green ones a run of the same recipe with the exploration noise scaled to 50 Hz (0.83 at 6.4 minutes on its own),
+      evaluated with test-time action refinement: at every control step the policy's action is moved
+      by five gradient steps on the world model's imagined return and the best is kept (a control step of the 108 clips
+      takes 0.17 s instead of the policy's 0.04 s on an RTX 5070 Ti;
+      <a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">code</a>). The tracking errors are averaged over every frame a clip
       is tracked before it ends or fails, and for the first release only its two published checkpoints (iterations 10000
       and 16000) are measured.</p>
     <div class="chart bars" id="chart-ms-time">

@@ -316,7 +316,7 @@ function charts() {
     series: [{ name: 'steps', values: ms.train.ep_len, it: ms.train.iteration, color: S1 }], bands: wmBand(at(ms.train, 500)), yFmt: (v) => v.toFixed(0),
     aria: `Episode length climbs past 250 steps within 2 hours of training and reaches ${ms.train.ep_len.at(-1).toFixed(0)}` });
   // held-out return: the first release's run and, on the same log time axis, the current fastest recipe (orange) and
-  // its checkpoints with the test-time action refinement (green)
+  // a run of the same recipe (noise scaled to 50 Hz) evaluated with the test-time action refinement (green)
   const h8 = document.getElementById('chart-ms-eval'), fast = D.mshuman_fast?.eval, refine = D.mshuman_fast?.refine;
   const tFmt = (v) => (v < 1 ? `${(v * 60).toFixed(1).replace(/\.0$/, '')} min` : `${v.toFixed(1).replace(/\.0$/, '')} h`);
   const first = (e, r) => e.wall_h[e.norm_return.findIndex((v) => v >= r)];
@@ -329,7 +329,7 @@ function charts() {
     aria: `Held-out normalized return: the first release passes 0.83 after ${first(ms.eval, 0.83).toFixed(1)} hours of training and reaches ` +
       `${Math.max(...ms.eval.norm_return).toFixed(2)}; the fastest recipe passes 0.83 after ${(first(fast, 0.83) * 60).toFixed(1)} minutes ` +
       `and reaches ${Math.max(...fast.norm_return).toFixed(2)} within ${Math.round(fast.wall_h.at(-1) * 60)} minutes` +
-      (refine ? `; with the test-time refinement of its actions it passes 0.83 after ${(first(refine, 0.83) * 60).toFixed(1)} minutes ` +
+      (refine ? `; a run of the same recipe evaluated with test-time refinement passes 0.83 after ${(first(refine, 0.83) * 60).toFixed(1)} minutes ` +
         `and reaches ${Math.max(...refine.norm_return).toFixed(2)}` : '') });
   else if (h8 && ms) lineChart(h8, { x: ms.eval.wall_h, xDomain: [0, msEnd], yDomain: [0, 1], xLabel: H_LABEL, xName: '', xFmt: hFmt, iter: iters(ms.train),
     series: [{ name: 'normalized return', values: ms.eval.norm_return, it: ms.eval.iteration, color: S1, dots: true }], yFmt: (v) => v.toFixed(2),

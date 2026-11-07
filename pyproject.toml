@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 ms-eval = "muscle_supermimic.tasks.tracking.scripts.evaluate:main"
+ms-refine = "muscle_supermimic.tasks.tracking.scripts.refine:main"
 ms-render = "muscle_supermimic.tasks.tracking.scripts.render:main"
 ms-retarget-myofullbody = "muscle_supermimic.tasks.tracking.scripts.retarget_myofullbody:main"
 ms-export-web = "muscle_supermimic.tasks.tracking.scripts.export_web:main"

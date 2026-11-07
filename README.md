@@ -127,8 +127,13 @@ by five normalized gradient-ascent steps on the world model's imagined return (t
 rewards and the bootstrapped value, as the policy update computes it) and the iterate of highest imagined return is
 executed. On the 108 held-out clips it brings the 20-minute policies from 0.940 to 0.965 (two seeds; no failed clip),
 the MPJPE from 18.3 to 13.6 mm and the joint angle error from 3.4 to 3.0 degrees, and earlier checkpoints pass 0.83:
-after 4.6 and 5.2 minutes of training for the two seeds. It costs 0.16 s per control step for the 108 clips on one
-RTX 5090, against 0.04 s for the policy alone. The script is not in the release yet.
+after 4.6 and 5.2 minutes of training for the two seeds. A control step of the 108 clips takes 0.17 s instead of the
+policy's 0.04 s on an RTX 5070 Ti. `ms-refine` evaluates one checkpoint this way, with `ms-eval`'s metrics:
+
+```bash
+uv run ms-refine --task Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands-No-Muscle-Obs --decimation 10 --stride 10 \
+    --checkpoint logs/rsl_rl/mshuman700_tracking/<run>/model_<iteration>.pt --motion-file data/mshuman700_kit/kit_kinesis_test.txt
+```
 
 Each step adds to the one above (MS-Human-700 with locked hands, one RTX 5090, warm compile caches):
 
@@ -212,7 +217,7 @@ The tasks register through mjlab's `mjlab.tasks` entry point with the SuperMimic
 | Path | What |
 |---|---|
 | `src/muscle_supermimic/assets/robots/` | the two robots as mjlab `EntityCfg`s, and `ModelInfo` (root, independent and coupled joints, muscles) |
-| `src/muscle_supermimic/tasks/tracking/` | the task: env cfg, `mdp/` (FK, muscle geometry and activation, motion library, analytic terms), per-robot configs, `scripts/` (`ms-retarget-myofullbody`, `ms-eval`, `ms-render`) |
+| `src/muscle_supermimic/tasks/tracking/` | the task: env cfg, `mdp/` (FK, muscle geometry and activation, motion library, analytic terms), per-robot configs, `scripts/` (`ms-retarget-myofullbody`, `ms-eval`, `ms-refine`, `ms-render`) |
 | `src/muscle_supermimic/rl/supermimic/` | the SuperMimic runner, world model / policy / critic, replay buffer, config |
 | `third_party/MS-Human-700/` | the upstream MS-Human-700 model (git submodule) |
 | `tests/` | FK, muscles and activation vs MuJoCo, retargeting, simulator vs analytic terms, a tiny end-to-end training run |
