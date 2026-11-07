@@ -1,0 +1,20 @@
+# What SkyPilot leaves out when it syncs this repo to a cloud machine (skypilot/train_blink.yaml). The task's setup
+# recreates the venv from uv.lock, clones MS-Human-700 at the pinned commit and downloads the KIT clips.
+.git/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+logs/
+videos/
+third_party/
+docs/website/
+data/mshuman700_kit/
+data/musclemimic/
+*.pt
+*.npz
+*.mp4
+data/lafan1_bvh/
+data/lafan1_myofullbody/
+data/lafan1_mshuman700/

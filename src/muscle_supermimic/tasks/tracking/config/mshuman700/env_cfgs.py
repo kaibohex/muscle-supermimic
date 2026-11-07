@@ -20,12 +20,13 @@ TRACKED_BODIES: tuple[str, ...] = (
 FOOT_BODIES: tuple[str, ...] = ("calcn_r", "toes_r", "calcn_l", "toes_l")
 
 
-def mshuman700_flat_tracking_env_cfg(play: bool = False, lock_hands: bool = False) -> ManagerBasedRlEnvCfg:
+def mshuman700_flat_tracking_env_cfg(play: bool = False, lock_hands: bool = False, muscle_obs: bool = True) -> ManagerBasedRlEnvCfg:
     """Args:
       play: auto-reset, one env, every clip from its first frame (mjlab's ``play``).
       lock_hands: hands + wrists locked (33 joint DoF), muscles acting only on them removed (694 muscles).
+      muscle_obs: observe muscle length, velocity and force (see ``make_tracking_env_cfg``).
     """
-    cfg = make_tracking_env_cfg()
+    cfg = make_tracking_env_cfg(muscle_obs=muscle_obs)
     cfg.scene.entities = {"robot": get_mshuman700_cfg(self_collisions=False, lock_hands=lock_hands)}
     motion_cmd = cfg.commands["motion"]
     assert isinstance(motion_cmd, MotionCommandCfg)

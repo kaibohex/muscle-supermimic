@@ -20,7 +20,8 @@
     <p class="subtitle">Whole-body motion tracking for musculoskeletal humanoids with one differentiable world model, on one RTX&nbsp;5090
       <span class="speedup">in <del>4&nbsp;hours</del> <del class="step">14&nbsp;min</del> <del class="step step2">9&nbsp;min</del> <ins>6.5&nbsp;min<sup>*</sup></ins></span></p>
     <p class="subtitle-note">* MS-Human-700 reaches a normalized return of 0.83 on the 108 held-out clips in 6.5 min of training
-      (two seeds), with the compile caches warmed up (a cold machine adds its compilation time). Code coming soon.</p>
+      (two seeds), with the compile caches warmed up (a cold machine adds its compilation time).
+      <a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">Code</a>.</p>
     <div class="author-list">
       <span class="author">Kaibo He</span>
       <span class="author">Maciej Bakowicz</span>
@@ -80,13 +81,18 @@
   <div class="container narrow">
     <h2>News</h2>
     <ul class="news">
+      <li><span class="news-date">2026-11</span><span>The code of the fast training recipe is out: see
+        <a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">Fast training</a>
+        in the README.</span></li>
       <li><span class="news-date">2026-11</span><span>Training sped up again, from 9 to 6.5 minutes.</span></li>
       <li><span class="news-date">2026-11</span><span>Training sped up again, from 14 to 9 minutes: MS-Human-700 passes a
         normalized return of 0.83 on the 108 held-out clips after 9 minutes on one RTX&nbsp;5090 with both of two seeds,
-        with the compile caches warmed up. Code coming soon.</span></li>
+        with the compile caches warmed up. Code:
+        <a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">Fast training</a>.</span></li>
       <li><span class="news-date">2026-11</span><span>Training sped up from 4 hours to 14 minutes: MS-Human-700 passes a
         normalized return of 0.83 on the 108 held-out clips after 14 minutes on one RTX&nbsp;5090, with the compile caches
-        warmed up. Code coming soon.</span></li>
+        warmed up. Code:
+        <a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">Fast training</a>.</span></li>
       <li><span class="news-date">2026-10</span><span>Checkpoints of both bodies on
         <a href="https://huggingface.co/Beanpow/muscle-supermimic" target="_blank" rel="noopener">Hugging Face</a>, and the
         <a href="#live">interactive demo</a> above, which runs both policies in your browser on 32 held-out clips.</span></li>
@@ -218,8 +224,14 @@
       motion) retargeted to it, 4096 parallel environments, MuscleMimic's solver settings (Euler, 100 / 50 iterations), on one
       RTX 5090. This is a snapshot at iteration 16800 (10.6 hours), with every
       checkpoint up to iteration 16000 evaluated. The orange curves on the held-out charts are the current fastest recipe
-      (code coming soon); the tracking errors are averaged over every frame a clip is tracked before it ends or fails, and
+      (<a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">code</a>); the
+      tracking errors are averaged over every frame a clip is tracked before it ends or fails, and
       for the first release only its two published checkpoints (iterations 10000 and 16000) are measured.</p>
+    <div class="chart bars" id="chart-ms-time">
+      <div class="chart-title">Training time to a normalized return of 0.83 on the 108 held-out clips</div>
+      <div class="chart-sub">MS-Human-700 with locked hands, one RTX 5090, warm compile caches, the first evaluation at or above
+        0.83. Each step adds to the one above, coloured by where it comes from: <a href="https://github.com/Huy-Quang-Dao/instantTrack" target="_blank" rel="noopener">InstantTrack</a> and <a href="https://github.com/fuyichen0725/blinkmimic" target="_blank" rel="noopener">BlinkMimic</a>, ours, or both.</div>
+    </div>
     <div class="stats">
       <div class="stat"><div class="stat-label">Training episode length, iterations 16100–16800</div><div class="stat-value">264<small>steps (2.6 s)</small></div></div>
       <div class="stat"><div class="stat-label">Training episodes ending in a failure, the same iterations</div><div class="stat-value">0.1 %</div></div>
@@ -350,7 +362,8 @@ uv run train Mjlab-SuperMimic-Flat-MyoFullBody \
     <p style="margin-top: 0.9rem;">Please also cite the works it builds on: SuperMimic
       (<a href="https://arxiv.org/abs/2610.28480">arXiv:2610.28480</a>), MuscleMimic
       (<a href="https://arxiv.org/abs/2603.25544">arXiv:2603.25544</a>) and
-      <a href="https://github.com/google-deepmind/mujoco_menagerie/tree/main/ms_human_700">MS-Human-700</a>.</p>
+      <a href="https://github.com/google-deepmind/mujoco_menagerie/tree/main/ms_human_700">MS-Human-700</a>, and for the fast
+      training recipe <a href="https://github.com/fuyichen0725/blinkmimic" target="_blank" rel="noopener">BlinkMimic</a> and <a href="https://github.com/Huy-Quang-Dao/instantTrack" target="_blank" rel="noopener">InstantTrack</a>.</p>
   </div>
 </section>
 
@@ -358,7 +371,8 @@ uv run train Mjlab-SuperMimic-Flat-MyoFullBody \
   <div class="container narrow">
     <h2>Acknowledgments</h2>
     <p>The SuperMimic implementation is ported from Chong Zhang's
-      <a href="https://github.com/zita-ch/supermimic_vibed">supermimic_vibed</a>. MyoFullBody, derived from
+      <a href="https://github.com/zita-ch/supermimic_vibed">supermimic_vibed</a>. The fast training recipe ports Fuyi Chen's
+      <a href="https://github.com/fuyichen0725/blinkmimic" target="_blank" rel="noopener">BlinkMimic</a> and <a href="https://github.com/Huy-Quang-Dao/instantTrack" target="_blank" rel="noopener">InstantTrack</a>, which it builds on. MyoFullBody, derived from
       <a href="https://github.com/MyoHub/myosuite">MyoSuite</a>, comes from <a href="https://github.com/amathislab/musclemimic">MuscleMimic</a>'s
       <code>musclemimic-models</code>, as do its tracking task and the retargeted KIT motions; MS-Human-700 from
       <a href="https://github.com/google-deepmind/mujoco_menagerie/tree/main/ms_human_700">MuJoCo Menagerie</a>; the simulation framework is

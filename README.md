@@ -26,12 +26,13 @@ the excitation of every muscle at 100 Hz to follow motion-capture clips.
 
 ## News
 
+- **[2026-11]** The code of the fast training recipe is out: see [Fast training](#fast-training).
 - **[2026-11]** Training sped up again, from 9 to 6.5 minutes.
 - **[2026-11]** Training sped up again, from 14 to 9 minutes: MS-Human-700 passes a normalized return of 0.83 on the
-  108 held-out clips after 9 minutes on one RTX 5090 with both of two seeds, with the compile caches warmed up. Code
-  coming soon.
+  108 held-out clips after 9 minutes on one RTX 5090 with both of two seeds, with the compile caches warmed up. Code:
+  [Fast training](#fast-training).
 - **[2026-11]** Training sped up from 4 hours to 14 minutes: MS-Human-700 passes a normalized return of 0.83 on the 108
-  held-out clips after 14 minutes on one RTX 5090, with the compile caches warmed up. Code coming soon.
+  held-out clips after 14 minutes on one RTX 5090, with the compile caches warmed up. Code: [Fast training](#fast-training).
 - **[2026-10]** Checkpoints of both bodies on [Hugging Face](https://huggingface.co/Beanpow/muscle-supermimic), and an
   [interactive demo](https://muscle-supermimic.beanpow.top/demo/) on the [project page](https://muscle-supermimic.beanpow.top/)
   that runs both policies in the browser on 32 held-out clips.
@@ -50,6 +51,89 @@ Both bodies train on MuscleMimic's KIT split (972 training clips) with the defau
 
 The checkpoints of iterations 10000 and 16000 of both runs are on Hugging Face:
 [Beanpow/muscle-supermimic](https://huggingface.co/Beanpow/muscle-supermimic).
+
+## Fast training
+
+`scripts/train_blink.sh` trains MS-Human-700 (locked hands, without muscle observations) to a normalized return of
+0.83 on the 108 held-out clips in **6.4 minutes** on one RTX 5090, with both of two seeds (best 0.944 / 0.945),
+against 4.3 hours for the first release. It ports the training speedups of
+[BlinkMimic](https://github.com/fuyichen0725/blinkmimic) (which builds on
+[InstantTrack](https://github.com/Huy-Quang-Dao/instantTrack)), changes the three that do not transfer to 694
+muscles, and adds changes of our own. Every change is a runner flag, off by default: `uv run train` without them is
+still the first release's training.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/fast_training_dark.svg">
+    <img src="docs/assets/fast_training_light.svg" width="760" alt="Time to a held-out normalized return of 0.83 on MS-Human-700, step by step: the first release 4.3 hours; InstantTrack and BlinkMimic method changes 1.8 hours; no muscle observations and the updates as CUDA graphs 36 minutes; the collection as a CUDA graph 24 minutes; 1024 environments with overlapped collection 14 minutes; Beta exploration noise 9 minutes; 50 Hz control 6.4 minutes, 40 times faster in all">
+  </picture>
+  <br><sub>The first held-out evaluation at or above 0.83, MS-Human-700 with locked hands, one RTX 5090, warm compile
+  caches. Each step adds to the one above, coloured by where it comes from: InstantTrack and BlinkMimic, ours, or both
+  (striped).</sub>
+</p>
+
+```bash
+bash scripts/train_blink.sh Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands-No-Muscle-Obs \
+    data/mshuman700_kit/kit_kinesis_train.txt --agent.run-name blink --agent.max-hours 0.3333
+# the recipe controls at 50 Hz: evaluate at the same rate
+uv run ms-eval --task Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands-No-Muscle-Obs --decimation 10 --stride 10 \
+    --checkpoint logs/rsl_rl/mshuman700_tracking/<run>/model_<iteration>.pt --motion-file data/mshuman700_kit/kit_kinesis_test.txt
+```
+
+The times are with warm compile caches: a fresh machine first compiles for 5-10 minutes inside the training clock,
+unless it loads caches saved with `scripts/compile_cache.sh`.
+
+**Taken from BlinkMimic and InstantTrack**, as they are:
+
+- the deployed policy is a Polyak average (EMA 0.995) of the trained one (InstantTrack);
+- Muon on the hidden weight matrices of the policy and the world model, Adam elsewhere (BlinkMimic);
+- no host synchronization in the update loop, and fused Adam (InstantTrack);
+- learning rate 4e-4 and a 3 x 1024 world model with 5 batches per iteration (InstantTrack); an imagination batch of
+  2048 (BlinkMimic);
+- reset statistics averaged per clip bin before their EMA step (BlinkMimic), and 30 % of the resets just before
+  recent failure points (InstantTrack);
+- a semi-implicit world model (it predicts velocity increments and integrates positions as the Euler substeps do)
+  and the left-right mirror image of half of each world-model batch (BlinkMimic);
+- the world-model and policy updates as CUDA graphs (InstantTrack / BlinkMimic), and the collection step as a CUDA
+  graph (BlinkMimic's idea; here a thin wrapper around MuJoCo-Warp, `rl/supermimic/collector.py`).
+
+**Changed for 694 muscles**: three of BlinkMimic's G1 settings fail on MS-Human-700.
+
+- No world-model warm-up and unclamped bootstrapped values: the critic diverges from the first policy updates.
+  Here the bootstrapped values are clamped to the attainable maximum and the world model trains alone for 200
+  iterations.
+- A 4x policy learning rate early on: the policy degrades after about 1000 iterations, and even 2x stalls about half
+  of the runs. Here it stays at 1x.
+- Evaluation-guided resets: on 5 s clips every probe fails within 3 s of its start, and the sweeps cost half the
+  training time. Here they are off.
+
+**Our own changes**:
+
+- Task variants without muscle observations (`-No-Muscle-Obs`): the policy no longer sees muscle length, velocity
+  and force, which removes the muscle geometry, the costliest part of an imagined step. On MyoFullBody the policy
+  update takes half the time, with the same learning curve over 16000 iterations.
+- 1024 environments instead of 4096, with the collection on a second CUDA stream, concurrent with the updates.
+- Exploration noise drawn from a Beta distribution whose mean is the policy's excitation, instead of a Gaussian
+  clipped to [0, 1], which adds a tonic co-contraction to the muscles the policy keeps nearly silent.
+- 50 Hz control: 10 physics substeps per policy step instead of 5, every step-counted setting rescaled to keep its
+  duration (horizon, discount, buffer, world-model windows, goal spacing, simulator steps per iteration), and the
+  exploration noise scaled by 1/sqrt(2) to keep its variance per second.
+
+Each step adds to the one above (MS-Human-700 with locked hands, one RTX 5090, warm compile caches):
+
+| | first 0.83 on the held-out clips | s / iteration |
+|---|---|---|
+| first release (4096 environments) | 4.3 h | 2.38 |
+| + the method changes of BlinkMimic and InstantTrack, changed for 694 muscles | 1.8 h | 1.89 |
+| + no muscle observations, the updates as CUDA graphs | 36 min | 0.67 |
+| + the collection step as a CUDA graph | 24 min | 0.48 |
+| + 1024 environments, the collection concurrent with the updates | 14 min | 0.24 |
+| + Beta exploration noise, no rematerialization of the imagined steps | 9 min | 0.21 |
+| + 50 Hz control | 6.4 min | 0.14 |
+
+The last two rows hold for two seeds each, the others are single runs.
+[docs/training.md](docs/training.md) ("BlinkMimic recipe") lists every flag, what each setting does, and the
+iteration's time piece by piece.
 
 ## Install
 
@@ -148,6 +232,8 @@ It builds on the following works; please cite them as well:
   [arXiv:2603.25544](https://arxiv.org/abs/2603.25544), [code](https://github.com/amathislab/musclemimic).
 - MS-Human-700: [MuJoCo Menagerie, ms_human_700](https://github.com/google-deepmind/mujoco_menagerie/tree/main/ms_human_700).
 - mjlab: [mujocolab/mjlab](https://github.com/mujocolab/mjlab).
+- BlinkMimic: F. Chen, [fuyichen0725/blinkmimic](https://github.com/fuyichen0725/blinkmimic), and InstantTrack,
+  [Huy-Quang-Dao/instantTrack](https://github.com/Huy-Quang-Dao/instantTrack), for the fast training recipe.
 
 ## License and attribution
 
@@ -155,6 +241,11 @@ Apache License 2.0 ([LICENSE](LICENSE)); [NOTICE](NOTICE) carries the notices of
 
 - The SuperMimic implementation is ported from [supermimic_vibed](https://github.com/zita-ch/supermimic_vibed)
   by Chong Zhang (MIT, Copyright (c) 2026 ETH Zurich, Chong Zhang); ported files say so in their docstrings.
+- The BlinkMimic pieces of the runner (`rl/supermimic/optim.py`; the policy EMA, the update loop without host
+  synchronization, the Muon split, the policy learning-rate schedule and the reset-statistics fixes) and
+  `scripts/train_blink.sh` are ported from BlinkMimic (MIT, Copyright (c) 2026 Fuyi Chen), which derives from
+  InstantTrack (MIT). The optional DEP controller (`rl/supermimic/dep.py`) is ported from
+  [depRL](https://github.com/martius-lab/depRL) (MIT).
 - The MyoFullBody entity follows MuscleMimic's environment (Apache-2.0,
   `musclemimic/environments/humanoids/myofullbody.py`): the finger joints and muscles it removes, the mimic
   sites it tracks. Its license is in `third_party/musclemimic/LICENSE`; the KIT train/test lists in

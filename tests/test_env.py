@@ -21,6 +21,7 @@ MOTIONS = {
     "Mjlab-SuperMimic-Flat-MS-Human-700": MSHUMAN700_CLIP,
     "Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands": MSHUMAN700_CLIP,
     "Mjlab-SuperMimic-Flat-MyoFullBody": os.path.join(DATA, "myofullbody", "walk.npz"),
+    "Mjlab-SuperMimic-Flat-MyoFullBody-No-Muscle-Obs": os.path.join(DATA, "myofullbody", "walk.npz"),
 }
 
 
@@ -109,6 +110,27 @@ def test_observation_follows_resets(setup):
     fresh = runner.obs_policy.assemble(None, StepCtx(cmd.read_state(), cmd.f.clone(), am.action, am.prev_action))
     torch.testing.assert_close(obs["policy"], fresh, atol=1e-5, rtol=1e-5)
     assert not torch.allclose(obs["policy"][0], stale[0])  # env 0 did move to its reset state
+
+
+def test_muscle_geometry_only_when_observed(setup, monkeypatch):
+    """The simulator side and the imagination evaluate the muscle geometry only if the observation has muscle length,
+    velocity or force (MuscleMimic's observation has all three, the No-Muscle-Obs tasks none)."""
+    from muscle_supermimic.tasks.tracking.mdp.heads import StepCtx
+
+    env, runner = setup
+    u, cmd = env.unwrapped, runner.cmd
+    observed = {"muscle_length", "muscle_velocity", "muscle_force"} & set(u.observation_manager.active_terms["policy"])
+    assert len(observed) in (0, 3) and cmd.observes_muscles == bool(observed)
+    u.reset()
+    calls = []  # (side, batch size) of every muscle-geometry evaluation from here on
+    side = "sim"
+    lv = cmd.geo.length_velocity
+    monkeypatch.setattr(cmd.geo, "length_velocity", lambda q, qd: calls.append((side, len(q))) or lv(q, qd))
+    env.step(torch.full((2, cmd.info.num_muscles), 0.1))  # no env resets: one observation
+    side = "imagination"
+    S, f, a = cmd.read_state(), cmd.f.clone(), u.action_manager.action.clone()
+    runner._imag_step(S, runner.obs_policy.init_history(StepCtx(S, f, a)), f, a)
+    assert calls == ([("sim", 2), ("imagination", 2)] if observed else [])
 
 
 def test_deviation_terminations(setup):
