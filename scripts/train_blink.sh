@@ -9,8 +9,8 @@
 # evaluation-guided resets are off (every probe fails within 3 s of its start on 5 s clips, and the eager sweep costs
 # half the training time).
 #
-# Since 2026-11-05 the preset also carries the systems and exploration settings of the fastest runs (Trials 30 and 31
-# of experiments/trials.json, MS-Human-700 locked hands without muscle observations, one RTX 5090 with warm compile
+# Since 2026-11-05 the preset also carries the systems and exploration settings of the fastest runs (Trials 30 and 31,
+# MS-Human-700 locked hands without muscle observations, one RTX 5090 with warm compile
 # caches): 1024 environments, the update and collection steps as CUDA graphs with the collection overlapped with the
 # updates, no rematerialization of the imagined steps, and Beta exploration noise (mean the policy's excitation, never
 # outside [0, 1]). First 0.83 held-out return at 8.5 minutes on both seeds (the published baseline: 4.3 hours). Keep

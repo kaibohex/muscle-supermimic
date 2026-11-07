@@ -148,8 +148,8 @@ standard deviation of at most `sqrt(a (1 - a))`, and fixed-`k` Beta keeps a fift
 Gaussian's step sizes and folds the draws back into the box instead of piling 42 % of them on 0; it is biased upwards
 like clipping, more so (0.081 at a = 0.02), and lifts 24 % of the near-silent draws by more than 0.1.
 
-**What the first runs showed** (MS-Human-700 with locked hands, 4096 envs, one RunPod RTX 5090, 2026-11-03;
-`experiments/trials.json` and its page have the records). Three of BlinkMimic's G1 settings do not transfer, and
+**What the first runs showed** (MS-Human-700 with locked hands, 4096 envs, one RunPod RTX 5090, 2026-11-03).
+Three of BlinkMimic's G1 settings do not transfer, and
 `scripts/train_blink.sh` sets the recipe without them:
 
 | BlinkMimic setting | on 694 muscles | the preset |
