@@ -266,6 +266,24 @@ function charts() {
   else if (h8 && ms) lineChart(h8, { x: ms.eval.wall_h, xDomain: [0, msEnd], yDomain: [0, 1], xLabel: H_LABEL, xName: '', xFmt: hFmt, iter: iters(ms.train),
     series: [{ name: 'normalized return', values: ms.eval.norm_return, it: ms.eval.iteration, color: S1, dots: true }], yFmt: (v) => v.toFixed(2),
     aria: `Held-out normalized return rises to ${ms.eval.norm_return.at(-1).toFixed(2)} after ${ms.eval.wall_h.at(-1).toFixed(1)} hours of training` });
+  // held-out tracking errors on the same log time axis: the first release's two published checkpoints, the fastest recipe's every one
+  const err = ms?.eval_err;
+  const errChart = (id, key, unit, digits, what) => {
+    const h = document.getElementById(id);
+    if (!h || !err || !fast?.[key]) return;
+    const top = Math.ceil(Math.max(...err[key], ...fast[key]) * 1.15 / 5) * 5;
+    const v = (a, i) => `${a[i].toFixed(digits)}${unit}`;
+    lineChart(h, { xDomain: [0.05, msEnd], xLog: true, yDomain: [0, top], xName: '', xFmt: tFmt,
+      xLabel: 'wall-clock training time (log scale)', xTicks: [[0.05, '3 min'], [1 / 6, '10 min'], [0.5, '30 min'], [1, '1 h'], [3, '3 h'], [10, '10 h']],
+      series: [{ name: 'first release', x: err.wall_h, values: err[key], it: err.iteration, color: S1, dots: true },
+        { name: 'fastest recipe', x: fast.wall_h, values: fast[key], it: fast.iteration, color: 'var(--series-2)', dots: true }],
+      yFmt: (y) => `${y.toFixed(digits)}${unit}`,
+      aria: `Held-out ${what}: the first release ${v(err[key], 0)} at ${err.wall_h[0].toFixed(1)} hours and ${v(err[key], err[key].length - 1)} at ` +
+        `${err.wall_h.at(-1).toFixed(1)} hours of training; the fastest recipe ${v(fast[key], fast[key].length - 1)} after ` +
+        `${Math.round(fast.wall_h.at(-1) * 60)} minutes, lowest ${Math.min(...fast[key]).toFixed(digits)}${unit}` });
+  };
+  errChart('chart-ms-mpjpe', 'mpjpe_mm', ' mm', 1, 'MPJPE');
+  errChart('chart-ms-joint', 'joint_mae_deg', '°', 2, 'joint angle error');
 }
 
 // ── MS-Human-700 clip gallery: pick a kind of motion, then one of its clips ─────

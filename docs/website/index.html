@@ -217,8 +217,9 @@
     <p>One run of MS-Human-700 with locked hands (694 muscles) on MuscleMimic's KIT split, 972 training clips (1.5 h of
       motion) retargeted to it, 4096 parallel environments, MuscleMimic's solver settings (Euler, 100 / 50 iterations), on one
       RTX 5090. This is a snapshot at iteration 16800 (10.6 hours), with every
-      checkpoint up to iteration 16000 evaluated. The orange curve on the held-out chart is the current fastest recipe
-      (code coming soon).</p>
+      checkpoint up to iteration 16000 evaluated. The orange curves on the held-out charts are the current fastest recipe
+      (code coming soon); the tracking errors are averaged over every frame a clip is tracked before it ends or fails, and
+      for the first release only its two published checkpoints (iterations 10000 and 16000) are measured.</p>
     <div class="stats">
       <div class="stat"><div class="stat-label">Training episode length, iterations 16100–16800</div><div class="stat-value">264<small>steps (2.6 s)</small></div></div>
       <div class="stat"><div class="stat-label">Training episodes ending in a failure, the same iterations</div><div class="stat-value">0.1 %</div></div>
@@ -233,6 +234,16 @@
       <div class="chart" id="chart-ms-eval">
         <div class="chart-title">Normalized return on the 108 held-out clips</div>
         <div class="chart-sub">per evaluated checkpoint, every clip once from its first frame</div>
+      </div>
+    </div>
+    <div class="two-col">
+      <div class="chart" id="chart-ms-mpjpe">
+        <div class="chart-title">MPJPE on the 108 held-out clips</div>
+        <div class="chart-sub">mm, the 17 tracked bodies' mean distance from the reference, relative to the pelvis; lower is better</div>
+      </div>
+      <div class="chart" id="chart-ms-joint">
+        <div class="chart-title">Joint angle error on the 108 held-out clips</div>
+        <div class="chart-sub">degrees, mean absolute error of the 37 independent joints (counting the 42 coupled ones would lower it); lower is better</div>
       </div>
     </div>
     <h3>Training clips at iteration 10000</h3>
