@@ -37,3 +37,27 @@ def test_batched_evaluation_keeps_each_policy_to_its_own_worlds():
     # fewer policies than copies: the spare worlds follow the last policy and are left out of the results
     (only,) = evaluate_many(env, runner, [p1])
     assert abs(only["norm_return"] - r1["norm_return"]) < 1e-3
+
+
+def test_frame_helpers_of_the_error_metrics():
+    """The rotation angle, the heading frame and the root-frame offsets the MPJPE variants use."""
+    from muscle_supermimic.tasks.tracking.scripts.evaluate import _angle, _in_frame, _yaw
+
+    def rz(a):
+        c, s = torch.cos(torch.tensor(a)), torch.sin(torch.tensor(a))
+        return torch.tensor([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+    def rx(a):
+        c, s = torch.cos(torch.tensor(a)), torch.sin(torch.tensor(a))
+        return torch.tensor([[1.0, 0.0, 0.0], [0.0, c, -s], [0.0, s, c]])
+
+    assert abs(_angle(torch.eye(3), rz(0.3)).item() - 0.3) < 1e-6 and abs(_angle(rx(2.0), rx(-1.0)).item() - 3.0) < 1e-5 and abs(_angle(rx(2.0), rx(-2.0)).item() - (2 * torch.pi - 4.0)) < 1e-5
+    assert _angle(rz(1e-4), rz(1e-4)).item() == 0.0
+    # the heading frame keeps only the yaw: a tilt about the x axis leaves it, a turn about z moves it
+    assert torch.allclose(_yaw(rz(0.7) @ rx(0.4)), rz(0.7), atol=1e-6)
+    # offsets in the root's frame do not change when the whole body turns and moves in the world
+    torch.manual_seed(0)
+    P, R = torch.randn(5, 3), rz(0.5) @ rx(0.2)
+    G, t = rz(1.1) @ rx(-0.3), torch.tensor([1.0, -2.0, 0.5])
+    assert torch.allclose(_in_frame(R, P), _in_frame(G @ R, P @ G.T + t), atol=1e-5)
+    assert torch.allclose(_in_frame(_yaw(R), P), _in_frame(_yaw(rz(1.1) @ R), P @ rz(1.1).T + t), atol=1e-5)
