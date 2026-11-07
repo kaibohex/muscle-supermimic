@@ -18,10 +18,10 @@
     <h1 class="title">muscle-supermimic</h1>
     <!-- EDIT: the training time may change as the runs improve -->
     <p class="subtitle">Whole-body motion tracking for musculoskeletal humanoids with one differentiable world model, on one RTX&nbsp;5090
-      <span class="speedup">in <del>4&nbsp;hours</del> <del class="step">14&nbsp;min</del> <del class="step step2">9&nbsp;min</del> <ins>6.5&nbsp;min<sup>*</sup></ins></span></p>
-    <p class="subtitle-note">* MS-Human-700 reaches a normalized return of 0.83 on the 108 held-out clips in 6.5 min of training
-      (two seeds), with the compile caches warmed up (a cold machine adds its compilation time).
-      <a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">Code</a>.</p>
+      <span class="speedup">in <del>4&nbsp;hours</del> <del class="step">14&nbsp;min</del> <del class="step step2">9&nbsp;min</del> <ins>6.4&nbsp;min<sup>*</sup></ins></span></p>
+    <p class="subtitle-note">* To a normalized return of 0.83 on MS-Human-700's 108 held-out clips, two seeds, warm compile
+      caches. And accurate: after 20 minutes 18&nbsp;mm MPJPE and 3.4&deg; joint error (the first release after 10 hours:
+      22&nbsp;mm, 5.1&deg;), 14&nbsp;mm and 3.0&deg; with test-time refinement.</p>
     <div class="author-list">
       <span class="author">Kaibo He</span>
       <span class="author">Maciej Bakowicz</span>
@@ -81,6 +81,9 @@
   <div class="container narrow">
     <h2>News</h2>
     <ul class="news">
+      <li><span class="news-date">2026-11</span><span>Not only fast but also accurate: after 20 minutes of training the
+        held-out MPJPE is 18&nbsp;mm (the first release after 10 hours: 22&nbsp;mm), and 14&nbsp;mm with test-time action
+        refinement through the world model, which also reaches 0.83 after 5.2 minutes.</span></li>
       <li><span class="news-date">2026-11</span><span>The code of the fast training recipe is out: see
         <a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">Fast training</a>
         in the README.</span></li>
@@ -224,13 +227,19 @@
       motion) retargeted to it, 4096 parallel environments, MuscleMimic's solver settings (Euler, 100 / 50 iterations), on one
       RTX 5090. This is a snapshot at iteration 16800 (10.6 hours), with every
       checkpoint up to iteration 16000 evaluated. The orange curves on the held-out charts are the current fastest recipe
-      (<a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">code</a>); the
-      tracking errors are averaged over every frame a clip is tracked before it ends or fails, and
-      for the first release only its two published checkpoints (iterations 10000 and 16000) are measured.</p>
+      (<a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">code</a>), the
+      green ones a run of the same recipe with the exploration noise scaled to 50 Hz (0.83 at 6.4 minutes on its own),
+      evaluated with test-time action refinement: at every control step the policy's action is moved
+      by five gradient steps on the world model's imagined return and the best is kept (a control step of the 108 clips
+      takes 0.17 s instead of the policy's 0.04 s on an RTX 5070 Ti;
+      <a href="https://github.com/kaibohex/muscle-supermimic#fast-training" target="_blank" rel="noopener">code</a>). The tracking errors are averaged over every frame a clip
+      is tracked before it ends or fails, and for the first release only its two published checkpoints (iterations 10000
+      and 16000) are measured.</p>
     <div class="chart bars" id="chart-ms-time">
       <div class="chart-title">Training time to a normalized return of 0.83 on the 108 held-out clips</div>
       <div class="chart-sub">MS-Human-700 with locked hands, one RTX 5090, warm compile caches, the first evaluation at or above
-        0.83. Each step adds to the one above, coloured by where it comes from: <a href="https://github.com/Huy-Quang-Dao/instantTrack" target="_blank" rel="noopener">InstantTrack</a> and <a href="https://github.com/fuyichen0725/blinkmimic" target="_blank" rel="noopener">BlinkMimic</a>, ours, or both.</div>
+        0.83. Each step adds to the one above, coloured by where it comes from: <a href="https://github.com/Huy-Quang-Dao/instantTrack" target="_blank" rel="noopener">InstantTrack</a> and <a href="https://github.com/fuyichen0725/blinkmimic" target="_blank" rel="noopener">BlinkMimic</a>, ours, or both. The last bar is not a training change: the same checkpoints evaluated with the test-time
+        action refinement.</div>
     </div>
     <div class="stats">
       <div class="stat"><div class="stat-label">Training episode length, iterations 16100–16800</div><div class="stat-value">264<small>steps (2.6 s)</small></div></div>

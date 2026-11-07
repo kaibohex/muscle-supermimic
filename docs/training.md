@@ -35,6 +35,8 @@ uv run train Mjlab-SuperMimic-Flat-MyoFullBody --env.commands.motion.motion-file
 uv run ms-eval --task Mjlab-SuperMimic-Flat-MyoFullBody --run-dir logs/rsl_rl/myofullbody_tracking/<run> \
     --motion-file data/musclemimic/kit_kinesis_test.txt --device cpu --watch
 uv run ms-eval --task Mjlab-SuperMimic-Flat-MyoFullBody --checkpoint <model.pt> --motion-file <clips> --record rollout.npz
+# the same with test-time action refinement: each action takes 5 gradient steps on the world model's imagined return
+uv run ms-refine --task Mjlab-SuperMimic-Flat-MyoFullBody --checkpoint <model.pt> --motion-file <clips> --record rollout.npz
 # render a recorded rollout: the simulated body, each muscle colored by its activation (light grey 0 to deep red 1),
 # studio look, 1920x1080 at 50 fps (--ghost overlays the reference, --no-activation keeps the model's muscle color)
 uv run ms-render rollout.npz videos/

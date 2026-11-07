@@ -26,6 +26,9 @@ the excitation of every muscle at 100 Hz to follow motion-capture clips.
 
 ## News
 
+- **[2026-11]** Not only fast but also accurate: after 20 minutes of training the held-out MPJPE is 18 mm (the first
+  release after 10 hours: 22 mm), and 14 mm with test-time action refinement through the world model, which also
+  reaches 0.83 after 5.2 minutes. See [Fast training](#fast-training).
 - **[2026-11]** The code of the fast training recipe is out: see [Fast training](#fast-training).
 - **[2026-11]** Training sped up again, from 9 to 6.5 minutes.
 - **[2026-11]** Training sped up again, from 14 to 9 minutes: MS-Human-700 passes a normalized return of 0.83 on the
@@ -56,7 +59,9 @@ The checkpoints of iterations 10000 and 16000 of both runs are on Hugging Face:
 
 `scripts/train_blink.sh` trains MS-Human-700 (locked hands, without muscle observations) to a normalized return of
 0.83 on the 108 held-out clips in **6.4 minutes** on one RTX 5090, with both of two seeds (best 0.944 / 0.945),
-against 4.3 hours for the first release. It ports the training speedups of
+against 4.3 hours for the first release. It is also more accurate: after 20 minutes of training the two seeds track
+the held-out clips with an MPJPE of 18.3 mm and a joint angle error of 3.4 degrees, against 22.4 mm and 5.1 degrees
+for the first release after 10 hours, and 13.6 mm and 3.0 degrees with test-time refinement (below). It ports the training speedups of
 [BlinkMimic](https://github.com/fuyichen0725/blinkmimic) (which builds on
 [InstantTrack](https://github.com/Huy-Quang-Dao/instantTrack)), changes the three that do not transfer to 694
 muscles, and adds changes of our own. Every change is a runner flag, off by default: `uv run train` without them is
@@ -65,11 +70,12 @@ still the first release's training.
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/fast_training_dark.svg">
-    <img src="docs/assets/fast_training_light.svg" width="760" alt="Time to a held-out normalized return of 0.83 on MS-Human-700, step by step: the first release 4.3 hours; InstantTrack and BlinkMimic method changes 1.8 hours; no muscle observations and the updates as CUDA graphs 36 minutes; the collection as a CUDA graph 24 minutes; 1024 environments with overlapped collection 14 minutes; Beta exploration noise 9 minutes; 50 Hz control 6.4 minutes, 40 times faster in all">
+    <img src="docs/assets/fast_training_light.svg" width="760" alt="Time to a held-out normalized return of 0.83 on MS-Human-700, step by step: the first release 4.3 hours; InstantTrack and BlinkMimic method changes 1.8 hours; no muscle observations and the updates as CUDA graphs 36 minutes; the collection as a CUDA graph 24 minutes; 1024 environments with overlapped collection 14 minutes; Beta exploration noise 9 minutes; 50 Hz control 6.4 minutes; the same checkpoints with test-time action refinement 5.2 minutes, 49 times faster in all">
   </picture>
   <br><sub>The first held-out evaluation at or above 0.83, MS-Human-700 with locked hands, one RTX 5090, warm compile
   caches. Each step adds to the one above, coloured by where it comes from: InstantTrack and BlinkMimic, ours, or both
-  (striped).</sub>
+  (striped). The last bar is not a training change: the same checkpoints evaluated with the test-time action refinement
+  described below.</sub>
 </p>
 
 ```bash
@@ -119,6 +125,19 @@ unless it loads caches saved with `scripts/compile_cache.sh`.
   duration (horizon, discount, buffer, world-model windows, goal spacing, simulator steps per iteration), and the
   exploration noise scaled by 1/sqrt(2) to keep its variance per second.
 
+**Test-time action refinement** (not a training change): at every control step, the deployed policy's action is moved
+by five normalized gradient-ascent steps on the world model's imagined return (the training horizon, the analytic
+rewards and the bootstrapped value, as the policy update computes it) and the iterate of highest imagined return is
+executed. On the 108 held-out clips it brings the 20-minute policies from 0.940 to 0.965 (two seeds; no failed clip),
+the MPJPE from 18.3 to 13.6 mm and the joint angle error from 3.4 to 3.0 degrees, and earlier checkpoints pass 0.83:
+after 4.6 and 5.2 minutes of training for the two seeds. A control step of the 108 clips takes 0.17 s instead of the
+policy's 0.04 s on an RTX 5070 Ti. `ms-refine` evaluates one checkpoint this way, with `ms-eval`'s metrics:
+
+```bash
+uv run ms-refine --task Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands-No-Muscle-Obs --decimation 10 --stride 10 \
+    --checkpoint logs/rsl_rl/mshuman700_tracking/<run>/model_<iteration>.pt --motion-file data/mshuman700_kit/kit_kinesis_test.txt
+```
+
 Each step adds to the one above (MS-Human-700 with locked hands, one RTX 5090, warm compile caches):
 
 | | first 0.83 on the held-out clips | s / iteration |
@@ -130,8 +149,9 @@ Each step adds to the one above (MS-Human-700 with locked hands, one RTX 5090, w
 | + 1024 environments, the collection concurrent with the updates | 14 min | 0.24 |
 | + Beta exploration noise, no rematerialization of the imagined steps | 9 min | 0.21 |
 | + 50 Hz control | 6.4 min | 0.14 |
+| + test-time action refinement (evaluation only: five gradient steps through the world model per control step) | 5.2 min | 0.14 |
 
-The last two rows hold for two seeds each, the others are single runs.
+The last three rows hold for two seeds each (the refinement: 4.6 and 5.2 min), the others are single runs.
 [docs/training.md](docs/training.md) ("BlinkMimic recipe") lists every flag, what each setting does, and the
 iteration's time piece by piece.
 
@@ -200,7 +220,7 @@ The tasks register through mjlab's `mjlab.tasks` entry point with the SuperMimic
 | Path | What |
 |---|---|
 | `src/muscle_supermimic/assets/robots/` | the two robots as mjlab `EntityCfg`s, and `ModelInfo` (root, independent and coupled joints, muscles) |
-| `src/muscle_supermimic/tasks/tracking/` | the task: env cfg, `mdp/` (FK, muscle geometry and activation, motion library, analytic terms), per-robot configs, `scripts/` (`ms-retarget-myofullbody`, `ms-eval`, `ms-render`) |
+| `src/muscle_supermimic/tasks/tracking/` | the task: env cfg, `mdp/` (FK, muscle geometry and activation, motion library, analytic terms), per-robot configs, `scripts/` (`ms-retarget-myofullbody`, `ms-eval`, `ms-refine`, `ms-render`) |
 | `src/muscle_supermimic/rl/supermimic/` | the SuperMimic runner, world model / policy / critic, replay buffer, config |
 | `third_party/MS-Human-700/` | the upstream MS-Human-700 model (git submodule) |
 | `tests/` | FK, muscles and activation vs MuJoCo, retargeting, simulator vs analytic terms, a tiny end-to-end training run |

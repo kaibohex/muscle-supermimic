@@ -1,17 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="860" height="404" viewBox="0 0 860 404" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="Training time to a held-out normalized return of 0.83 on MS-Human-700, step by step: First release (SuperMimic, 4096 environments) 4.3 h; + method changes (InstantTrack, BlinkMimic; adapted to 694 muscles) 1.8 h; + no muscle obs., update graphs (ours; the CUDA graphs: InstantTrack, BlinkMimic) 36 min; + collection as a CUDA graph (BlinkMimic's idea, our MuJoCo-Warp wrapper) 24 min; + 1024 envs, overlapped collection (ours) 14 min; + Beta exploration noise (ours) 9.0 min; + 50 Hz control (ours) 6.4 min">
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="448" viewBox="0 0 860 448" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="Training time to a held-out normalized return of 0.83 on MS-Human-700, step by step: First release (SuperMimic, 4096 environments) 4.3 h; + method changes (InstantTrack, BlinkMimic; adapted to 694 muscles) 1.8 h; + no muscle obs., update graphs (ours; the CUDA graphs: InstantTrack, BlinkMimic) 36 min; + collection as a CUDA graph (BlinkMimic's idea, our MuJoCo-Warp wrapper) 24 min; + 1024 envs, overlapped collection (ours) 14 min; + Beta exploration noise (ours) 9.0 min; + 50 Hz control (ours) 6.4 min; + test-time refinement (ours; five gradient steps through the world model) 5.2 min; 49 times faster in all">
 <defs><pattern id="both" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)"><rect width="4" height="8" fill="#199e70"/><rect x="4" width="4" height="8" fill="#d95926"/></pattern></defs>
 <text x="288" y="16" text-anchor="end" font-size="13" font-weight="600" fill="#f0efec">Time to 0.83 held-out</text>
 <text x="300" y="16" font-size="12" fill="#c3c2b7">MS-Human-700, 108 held-out clips, one RTX 5090; each step adds to the one above</text>
-<text x="300.0" y="364" text-anchor="middle" font-size="11" fill="#898781">0</text>
-<line x1="391.1" x2="391.1" y1="34" y2="348" stroke="#2c2c2a" stroke-width="1"/>
-<text x="391.1" y="364" text-anchor="middle" font-size="11" fill="#898781">1 h</text>
-<line x1="482.2" x2="482.2" y1="34" y2="348" stroke="#2c2c2a" stroke-width="1"/>
-<text x="482.2" y="364" text-anchor="middle" font-size="11" fill="#898781">2 h</text>
-<line x1="573.3" x2="573.3" y1="34" y2="348" stroke="#2c2c2a" stroke-width="1"/>
-<text x="573.3" y="364" text-anchor="middle" font-size="11" fill="#898781">3 h</text>
-<line x1="664.4" x2="664.4" y1="34" y2="348" stroke="#2c2c2a" stroke-width="1"/>
-<text x="664.4" y="364" text-anchor="middle" font-size="11" fill="#898781">4 h</text>
-<line x1="300.0" x2="300.0" y1="34" y2="348" stroke="#4a4a46" stroke-width="1"/>
+<text x="300.0" y="408" text-anchor="middle" font-size="11" fill="#898781">0</text>
+<line x1="391.1" x2="391.1" y1="34" y2="392" stroke="#2c2c2a" stroke-width="1"/>
+<text x="391.1" y="408" text-anchor="middle" font-size="11" fill="#898781">1 h</text>
+<line x1="482.2" x2="482.2" y1="34" y2="392" stroke="#2c2c2a" stroke-width="1"/>
+<text x="482.2" y="408" text-anchor="middle" font-size="11" fill="#898781">2 h</text>
+<line x1="573.4" x2="573.4" y1="34" y2="392" stroke="#2c2c2a" stroke-width="1"/>
+<text x="573.4" y="408" text-anchor="middle" font-size="11" fill="#898781">3 h</text>
+<line x1="664.5" x2="664.5" y1="34" y2="392" stroke="#2c2c2a" stroke-width="1"/>
+<text x="664.5" y="408" text-anchor="middle" font-size="11" fill="#898781">4 h</text>
+<line x1="300.0" x2="300.0" y1="34" y2="392" stroke="#4a4a46" stroke-width="1"/>
 <path d="M300.0,48.0H686.0A4,4 0 0 1 690.0,52.0V64.0A4,4 0 0 1 686.0,68.0H300.0Z" fill="#3987e5"/>
 <text x="288" y="56.0" text-anchor="end" font-size="13" font-weight="500" fill="#f0efec">First release</text>
 <text x="288" y="70.0" text-anchor="end" font-size="11" fill="#c3c2b7">SuperMimic, 4096 environments</text>
@@ -39,13 +39,17 @@
 <path d="M300.0,312.0H305.7A4,4 0 0 1 309.7,316.0V328.0A4,4 0 0 1 305.7,332.0H300.0Z" fill="#d95926"/>
 <text x="288" y="320.0" text-anchor="end" font-size="13" font-weight="500" fill="#f0efec">+ 50 Hz control</text>
 <text x="288" y="334.0" text-anchor="end" font-size="11" fill="#c3c2b7">ours</text>
-<text x="317.7" y="326.0" font-size="12" font-weight="600" fill="#f0efec">6.4 min<tspan font-weight="400" fill="#c3c2b7">  1.4× faster, 40× in all</tspan></text>
-<rect x="300" y="379" width="10" height="10" rx="2" fill="#3987e5"/>
-<text x="316" y="388" font-size="12" fill="#c3c2b7">first release</text>
-<rect x="421" y="379" width="10" height="10" rx="2" fill="#199e70"/>
-<text x="437" y="388" font-size="12" fill="#c3c2b7">from InstantTrack / BlinkMimic</text>
-<rect x="647" y="379" width="10" height="10" rx="2" fill="#d95926"/>
-<text x="663" y="388" font-size="12" fill="#c3c2b7">ours</text>
-<rect x="712" y="379" width="10" height="10" rx="2" fill="url(#both)"/>
-<text x="728" y="388" font-size="12" fill="#c3c2b7">both</text>
+<text x="317.7" y="326.0" font-size="12" font-weight="600" fill="#f0efec">6.4 min<tspan font-weight="400" fill="#c3c2b7">  1.4× faster</tspan></text>
+<path d="M300.0,356.0H303.9A4,4 0 0 1 307.9,360.0V372.0A4,4 0 0 1 303.9,376.0H300.0Z" fill="#d95926"/>
+<text x="288" y="364.0" text-anchor="end" font-size="13" font-weight="500" fill="#f0efec">+ test-time refinement</text>
+<text x="288" y="378.0" text-anchor="end" font-size="11" fill="#c3c2b7">ours; five gradient steps through the world model</text>
+<text x="315.9" y="370.0" font-size="12" font-weight="600" fill="#f0efec">5.2 min<tspan font-weight="400" fill="#c3c2b7">  1.2× faster, 49× in all</tspan></text>
+<rect x="300" y="423" width="10" height="10" rx="2" fill="#3987e5"/>
+<text x="316" y="432" font-size="12" fill="#c3c2b7">first release</text>
+<rect x="421" y="423" width="10" height="10" rx="2" fill="#199e70"/>
+<text x="437" y="432" font-size="12" fill="#c3c2b7">from InstantTrack / BlinkMimic</text>
+<rect x="647" y="423" width="10" height="10" rx="2" fill="#d95926"/>
+<text x="663" y="432" font-size="12" fill="#c3c2b7">ours</text>
+<rect x="712" y="423" width="10" height="10" rx="2" fill="url(#both)"/>
+<text x="728" y="432" font-size="12" fill="#c3c2b7">both</text>
 </svg>
