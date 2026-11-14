@@ -1,6 +1,7 @@
 """Which clips a motion file names: a clip, a directory, or a list; and MuscleMimic's KIT split."""
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -14,7 +15,7 @@ def test_motion_files(tmp_path):
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).touch()
     root = str(tmp_path)
-    assert motion_files(root) == [os.path.join(root, r) for r in ("3.npz", "a/1.npz", "a/b/2.npz")]
+    assert [Path(f) for f in motion_files(root)] == [tmp_path / r for r in ("3.npz", "a/1.npz", "a/b/2.npz")]
     assert motion_files(os.path.join(root, "3.npz")) == [os.path.join(root, "3.npz")]
     # a list keeps its order, resolves against its own directory and skips comments and blank lines
     (tmp_path / "a" / "clips.txt").write_text("# two clips\nb/2.npz\n\n1.npz  # the first\n")
