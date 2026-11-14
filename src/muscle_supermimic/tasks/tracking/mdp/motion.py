@@ -101,6 +101,8 @@ class MotionLib:
             T_src = p.shape[0]
             dur = (T_src - 1) / fps
             n = int(np.floor(dur / control_dt + 1e-6)) + 1
+            if n < 2:
+                raise ValueError(f"{f}: a clip needs at least two frames at the control rate")
             t = torch.arange(n, dtype=torch.float32) * control_dt * fps
             i0 = torch.clamp(t.floor().long(), max=T_src - 2)
             a = (t - i0.float()).clamp(0, 1)
@@ -126,7 +128,10 @@ class MotionLib:
             w[0] = so3_log(R[1] @ R[0].T) / control_dt
             w[-1] = so3_log(R[-1] @ R[-2].T) / control_dt
             root_p.append(p), root_R.append(R), root_v.append(v), root_w.append(w), jq.append(j), jqd.append(qd)
-        cat = lambda xs: torch.cat(xs).to(device)  # noqa: E731
+
+        def cat(xs: list[torch.Tensor]) -> torch.Tensor:
+            return torch.cat(xs).to(device)
+
         self.root_p, self.root_R, self.root_v, self.root_w = cat(root_p), cat(root_R), cat(root_v), cat(root_w)
         self.q, self.qd = cat(jq), cat(jqd)
         self.root_quat = mat_to_quat(self.root_R)
@@ -134,13 +139,15 @@ class MotionLib:
             bp, bR, bv, bw = [], [], [], []
             for s in range(0, self.num_frames, 65536):
                 e = min(s + 65536, self.num_frames)
-                out = kin.forward(self.root_p[s:e], self.root_R[s:e], self.root_v[s:e], self.root_w[s:e], self.q[s:e], self.qd[s:e])
+                out = kin.forward(
+                    self.root_p[s:e], self.root_R[s:e], self.root_v[s:e], self.root_w[s:e], self.q[s:e], self.qd[s:e]
+                )
                 bp.append(out[0]), bR.append(out[1]), bv.append(out[2]), bw.append(out[3])
             self.body_p, self.body_R, self.body_v, self.body_w = torch.cat(bp), torch.cat(bR), torch.cat(bv), torch.cat(bw)
-        # 1 s bins for return-based reset sampling
+        # Reset bins contain transition starts; the inclusive terminal frame is scoring-only.
         bin_clip, bin_start = [], []
         for c in range(len(lens)):
-            for b in range(int(np.ceil(lens[c] / bin_frames))):
+            for b in range(int(np.ceil((lens[c] - 1) / bin_frames))):
                 bin_clip.append(c)
                 bin_start.append(int(self.clip_start[c]) + b * bin_frames)
         self.bin_clip = torch.tensor(bin_clip, device=device)
@@ -151,6 +158,7 @@ class MotionLib:
             s = bin_start[b]
             e = min(s + bin_frames, int(self.clip_end[bin_clip[b]]) + 1)
             self.frame_bin[s:e] = b
+        self.frame_bin[self.clip_end] = self.frame_bin[self.clip_end - 1]
 
     @staticmethod
     def from_path(path: str, kin: SkeletonKinematics, control_dt: float, device: str, bin_frames: int = 50) -> MotionLib:
