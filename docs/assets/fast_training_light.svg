@@ -1,55 +1,59 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="860" height="448" viewBox="0 0 860 448" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="Training time to a held-out normalized return of 0.83 on MS-Human-700, step by step: First release (SuperMimic, 4096 environments) 4.3 h; + method changes (InstantTrack, BlinkMimic; adapted to 694 muscles) 1.8 h; + no muscle obs., update graphs (ours; the CUDA graphs: InstantTrack, BlinkMimic) 36 min; + collection as a CUDA graph (BlinkMimic's idea, our MuJoCo-Warp wrapper) 24 min; + 1024 envs, overlapped collection (ours) 14 min; + Beta exploration noise (ours) 9.0 min; + 50 Hz control (ours) 6.4 min; + test-time refinement (ours; five gradient steps through the world model) 5.2 min; 49 times faster in all">
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="492" viewBox="0 0 860 492" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" role="img" aria-label="Training time to a held-out normalized return of 0.83 on MS-Human-700, step by step, each the mean of three seeds: First release (SuperMimic, 4096 environments) 3.9 h; + method changes (InstantTrack, BlinkMimic; adapted to 700 muscles) 1.8 h; + no muscle obs., update graphs (ours; the CUDA graphs: InstantTrack, BlinkMimic) 37.2 min; + collection as a CUDA graph (BlinkMimic's idea, our MuJoCo-Warp wrapper) 24.2 min; + 1024 envs, overlapped collection (ours) 14.4 min; + no rematerialization (ours) 13.7 min; + Beta exploration noise (ours) 8.7 min; + 50 Hz control (ours) 6.3 min; + test-time refinement (ours; five gradient steps through the world model) 5.1 min; 37 times sooner than the first release at 50 Hz">
 <defs><pattern id="both" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)"><rect width="4" height="8" fill="#1baf7a"/><rect x="4" width="4" height="8" fill="#eb6834"/></pattern></defs>
 <text x="288" y="16" text-anchor="end" font-size="13" font-weight="600" fill="#1a1a1a">Time to 0.83 held-out</text>
-<text x="300" y="16" font-size="12" fill="#5f5e5a">MS-Human-700, 108 held-out clips, one RTX 5090; each step adds to the one above</text>
-<text x="300.0" y="408" text-anchor="middle" font-size="11" fill="#898781">0</text>
-<line x1="391.1" x2="391.1" y1="34" y2="392" stroke="#e1e0d9" stroke-width="1"/>
-<text x="391.1" y="408" text-anchor="middle" font-size="11" fill="#898781">1 h</text>
-<line x1="482.2" x2="482.2" y1="34" y2="392" stroke="#e1e0d9" stroke-width="1"/>
-<text x="482.2" y="408" text-anchor="middle" font-size="11" fill="#898781">2 h</text>
-<line x1="573.4" x2="573.4" y1="34" y2="392" stroke="#e1e0d9" stroke-width="1"/>
-<text x="573.4" y="408" text-anchor="middle" font-size="11" fill="#898781">3 h</text>
-<line x1="664.5" x2="664.5" y1="34" y2="392" stroke="#e1e0d9" stroke-width="1"/>
-<text x="664.5" y="408" text-anchor="middle" font-size="11" fill="#898781">4 h</text>
-<line x1="300.0" x2="300.0" y1="34" y2="392" stroke="#c3c2b7" stroke-width="1"/>
-<path d="M300.0,48.0H686.0A4,4 0 0 1 690.0,52.0V64.0A4,4 0 0 1 686.0,68.0H300.0Z" fill="#2a78d6"/>
+<text x="300" y="16" font-size="12" fill="#5f5e5a">MS-Human-700, 108 held-out clips, one RTX 5090; each bar the mean of three seeds</text>
+<text x="300.0" y="452" text-anchor="middle" font-size="11" fill="#898781">0</text>
+<line x1="391.1" x2="391.1" y1="34" y2="436" stroke="#e1e0d9" stroke-width="1"/>
+<text x="391.1" y="452" text-anchor="middle" font-size="11" fill="#898781">1 h</text>
+<line x1="482.2" x2="482.2" y1="34" y2="436" stroke="#e1e0d9" stroke-width="1"/>
+<text x="482.2" y="452" text-anchor="middle" font-size="11" fill="#898781">2 h</text>
+<line x1="573.4" x2="573.4" y1="34" y2="436" stroke="#e1e0d9" stroke-width="1"/>
+<text x="573.4" y="452" text-anchor="middle" font-size="11" fill="#898781">3 h</text>
+<line x1="664.5" x2="664.5" y1="34" y2="436" stroke="#e1e0d9" stroke-width="1"/>
+<text x="664.5" y="452" text-anchor="middle" font-size="11" fill="#898781">4 h</text>
+<line x1="300.0" x2="300.0" y1="34" y2="436" stroke="#c3c2b7" stroke-width="1"/>
+<path d="M300.0,48.0H654.8A4,4 0 0 1 658.8,52.0V64.0A4,4 0 0 1 654.8,68.0H300.0Z" fill="#2a78d6"/>
 <text x="288" y="56.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">First release</text>
 <text x="288" y="70.0" text-anchor="end" font-size="11" fill="#5f5e5a">SuperMimic, 4096 environments</text>
-<text x="698.0" y="62.0" font-size="12" font-weight="600" fill="#1a1a1a">4.3 h</text>
-<path d="M300.0,92.0H459.1A4,4 0 0 1 463.1,96.0V108.0A4,4 0 0 1 459.1,112.0H300.0Z" fill="#1baf7a"/>
+<text x="666.8" y="62.0" font-size="12" font-weight="600" fill="#1a1a1a">3.9 h</text>
+<path d="M300.0,92.0H459.5A4,4 0 0 1 463.5,96.0V108.0A4,4 0 0 1 459.5,112.0H300.0Z" fill="#1baf7a"/>
 <text x="288" y="100.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ method changes</text>
-<text x="288" y="114.0" text-anchor="end" font-size="11" fill="#5f5e5a">InstantTrack, BlinkMimic; adapted to 694 muscles</text>
-<text x="471.1" y="106.0" font-size="12" font-weight="600" fill="#1a1a1a">1.8 h<tspan font-weight="400" fill="#5f5e5a">  2.4× faster</tspan></text>
-<path d="M300.0,136.0H350.7A4,4 0 0 1 354.7,140.0V152.0A4,4 0 0 1 350.7,156.0H300.0Z" fill="url(#both)"/>
+<text x="288" y="114.0" text-anchor="end" font-size="11" fill="#5f5e5a">InstantTrack, BlinkMimic; adapted to 700 muscles</text>
+<text x="471.5" y="106.0" font-size="12" font-weight="600" fill="#1a1a1a">1.8 h</text>
+<path d="M300.0,136.0H352.5A4,4 0 0 1 356.5,140.0V152.0A4,4 0 0 1 352.5,156.0H300.0Z" fill="url(#both)"/>
 <text x="288" y="144.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ no muscle obs., update graphs</text>
 <text x="288" y="158.0" text-anchor="end" font-size="11" fill="#5f5e5a">ours; the CUDA graphs: InstantTrack, BlinkMimic</text>
-<text x="362.7" y="150.0" font-size="12" font-weight="600" fill="#1a1a1a">36 min<tspan font-weight="400" fill="#5f5e5a">  3.0× faster</tspan></text>
-<path d="M300.0,180.0H332.4A4,4 0 0 1 336.4,184.0V196.0A4,4 0 0 1 332.4,200.0H300.0Z" fill="#1baf7a"/>
+<text x="364.5" y="150.0" font-size="12" font-weight="600" fill="#1a1a1a">37.2 min</text>
+<path d="M300.0,180.0H332.7A4,4 0 0 1 336.7,184.0V196.0A4,4 0 0 1 332.7,200.0H300.0Z" fill="#1baf7a"/>
 <text x="288" y="188.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ collection as a CUDA graph</text>
 <text x="288" y="202.0" text-anchor="end" font-size="11" fill="#5f5e5a">BlinkMimic's idea, our MuJoCo-Warp wrapper</text>
-<text x="344.4" y="194.0" font-size="12" font-weight="600" fill="#1a1a1a">24 min<tspan font-weight="400" fill="#5f5e5a">  1.5× faster</tspan></text>
-<path d="M300.0,224.0H317.4A4,4 0 0 1 321.4,228.0V240.0A4,4 0 0 1 317.4,244.0H300.0Z" fill="#eb6834"/>
+<text x="344.7" y="194.0" font-size="12" font-weight="600" fill="#1a1a1a">24.2 min</text>
+<path d="M300.0,224.0H317.9A4,4 0 0 1 321.9,228.0V240.0A4,4 0 0 1 317.9,244.0H300.0Z" fill="#eb6834"/>
 <text x="288" y="232.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ 1024 envs, overlapped collection</text>
 <text x="288" y="246.0" text-anchor="end" font-size="11" fill="#5f5e5a">ours</text>
-<text x="329.4" y="238.0" font-size="12" font-weight="600" fill="#1a1a1a">14 min<tspan font-weight="400" fill="#5f5e5a">  1.7× faster</tspan></text>
-<path d="M300.0,268.0H309.7A4,4 0 0 1 313.7,272.0V284.0A4,4 0 0 1 309.7,288.0H300.0Z" fill="#eb6834"/>
-<text x="288" y="276.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ Beta exploration noise</text>
+<text x="329.9" y="238.0" font-size="12" font-weight="600" fill="#1a1a1a">14.4 min</text>
+<path d="M300.0,268.0H316.7A4,4 0 0 1 320.7,272.0V284.0A4,4 0 0 1 316.7,288.0H300.0Z" fill="#eb6834"/>
+<text x="288" y="276.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ no rematerialization</text>
 <text x="288" y="290.0" text-anchor="end" font-size="11" fill="#5f5e5a">ours</text>
-<text x="321.7" y="282.0" font-size="12" font-weight="600" fill="#1a1a1a">9.0 min<tspan font-weight="400" fill="#5f5e5a">  1.6× faster</tspan></text>
-<path d="M300.0,312.0H305.7A4,4 0 0 1 309.7,316.0V328.0A4,4 0 0 1 305.7,332.0H300.0Z" fill="#eb6834"/>
-<text x="288" y="320.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ 50 Hz control</text>
+<text x="328.7" y="282.0" font-size="12" font-weight="600" fill="#1a1a1a">13.7 min</text>
+<path d="M300.0,312.0H309.2A4,4 0 0 1 313.2,316.0V328.0A4,4 0 0 1 309.2,332.0H300.0Z" fill="#eb6834"/>
+<text x="288" y="320.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ Beta exploration noise</text>
 <text x="288" y="334.0" text-anchor="end" font-size="11" fill="#5f5e5a">ours</text>
-<text x="317.7" y="326.0" font-size="12" font-weight="600" fill="#1a1a1a">6.4 min<tspan font-weight="400" fill="#5f5e5a">  1.4× faster</tspan></text>
-<path d="M300.0,356.0H303.9A4,4 0 0 1 307.9,360.0V372.0A4,4 0 0 1 303.9,376.0H300.0Z" fill="#eb6834"/>
-<text x="288" y="364.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ test-time refinement</text>
-<text x="288" y="378.0" text-anchor="end" font-size="11" fill="#5f5e5a">ours; five gradient steps through the world model</text>
-<text x="315.9" y="370.0" font-size="12" font-weight="600" fill="#1a1a1a">5.2 min<tspan font-weight="400" fill="#5f5e5a">  1.2× faster, 49× in all</tspan></text>
-<rect x="300" y="423" width="10" height="10" rx="2" fill="#2a78d6"/>
-<text x="316" y="432" font-size="12" fill="#5f5e5a">first release</text>
-<rect x="421" y="423" width="10" height="10" rx="2" fill="#1baf7a"/>
-<text x="437" y="432" font-size="12" fill="#5f5e5a">from InstantTrack / BlinkMimic</text>
-<rect x="647" y="423" width="10" height="10" rx="2" fill="#eb6834"/>
-<text x="663" y="432" font-size="12" fill="#5f5e5a">ours</text>
-<rect x="712" y="423" width="10" height="10" rx="2" fill="url(#both)"/>
-<text x="728" y="432" font-size="12" fill="#5f5e5a">both</text>
+<text x="321.2" y="326.0" font-size="12" font-weight="600" fill="#1a1a1a">8.7 min</text>
+<path d="M300.0,356.0H305.6A4,4 0 0 1 309.6,360.0V372.0A4,4 0 0 1 305.6,376.0H300.0Z" fill="#eb6834"/>
+<text x="288" y="364.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ 50 Hz control</text>
+<text x="288" y="378.0" text-anchor="end" font-size="11" fill="#5f5e5a">ours</text>
+<text x="317.6" y="370.0" font-size="12" font-weight="600" fill="#1a1a1a">6.3 min<tspan font-weight="400" fill="#5f5e5a">  37× sooner than the first release</tspan></text>
+<path d="M300.0,400.0H303.8A4,4 0 0 1 307.8,404.0V416.0A4,4 0 0 1 303.8,420.0H300.0Z" fill="#eb6834"/>
+<text x="288" y="408.0" text-anchor="end" font-size="13" font-weight="500" fill="#1a1a1a">+ test-time refinement</text>
+<text x="288" y="422.0" text-anchor="end" font-size="11" fill="#5f5e5a">ours; five gradient steps through the world model</text>
+<text x="315.8" y="414.0" font-size="12" font-weight="600" fill="#1a1a1a">5.1 min<tspan font-weight="400" fill="#5f5e5a">  the same checkpoints, refined</tspan></text>
+<rect x="300" y="467" width="10" height="10" rx="2" fill="#2a78d6"/>
+<text x="316" y="476" font-size="12" fill="#5f5e5a">first release</text>
+<rect x="421" y="467" width="10" height="10" rx="2" fill="#1baf7a"/>
+<text x="437" y="476" font-size="12" fill="#5f5e5a">from InstantTrack / BlinkMimic</text>
+<rect x="647" y="467" width="10" height="10" rx="2" fill="#eb6834"/>
+<text x="663" y="476" font-size="12" fill="#5f5e5a">ours</text>
+<rect x="712" y="467" width="10" height="10" rx="2" fill="url(#both)"/>
+<text x="728" y="476" font-size="12" fill="#5f5e5a">both</text>
 </svg>

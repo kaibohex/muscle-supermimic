@@ -27,8 +27,8 @@ ms-render.
       --motion-file data/mshuman700_kit/kit_kinesis_test.txt
 
 With the defaults (K 5, eta 0.01, the training horizon) the fast recipe's 20-minute checkpoints go from a normalized
-return of 0.940 to 0.965 on the 108 held-out KIT clips (two seeds, no failed clip) and from an MPJPE of 18.3 to 13.6 mm;
-a control step of the 108 clips takes 0.17 s instead of the policy's 0.04 s on an RTX 5070 Ti.
+return of 0.936 to 0.965 on the 108 held-out KIT clips (three seeds, no failed clip) and from an MPJPE of 18.2 to 13.5 mm;
+the refinement takes 0.16 s per control step for all 108 clips at once on one RTX 5090.
 """
 
 import argparse

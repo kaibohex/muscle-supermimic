@@ -9,7 +9,6 @@ __pycache__/
 logs/
 videos/
 third_party/
-docs/website/
 data/mshuman700_kit/
 data/musclemimic/
 *.pt

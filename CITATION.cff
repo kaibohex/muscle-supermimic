@@ -9,6 +9,8 @@ authors:
     given-names: Maciej
   - family-names: Zhou
     given-names: Shihe
+  - family-names: Feng
+    given-names: Yusen
   - family-names: Sui
     given-names: Yanan
   - family-names: Radhakrishnan
@@ -33,6 +35,8 @@ preferred-citation:
       given-names: Maciej
     - family-names: Zhou
       given-names: Shihe
+    - family-names: Feng
+      given-names: Yusen
     - family-names: Sui
       given-names: Yanan
     - family-names: Radhakrishnan
