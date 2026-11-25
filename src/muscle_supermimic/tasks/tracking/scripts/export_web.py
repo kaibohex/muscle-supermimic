@@ -1,8 +1,8 @@
-"""Export a checkpoint for the browser demo (docs/website/demo/), and record the reference closed loop it is checked against.
+"""Export a checkpoint for the browser demo (demo/ of the project page, kaibohex/muscle-supermimic-page), and record the reference closed loop it is checked against.
 
 The demo steps the task's own scene model with MuJoCo's WebAssembly build and runs the policy's decoder with
 onnxruntime-web. The encoder sees only the reference, so its latent is evaluated here for every frame of the
-clips. The observation is recomputed in JavaScript (docs/website/demo/tracker.mjs) from MuJoCo quantities; this
+clips. The observation is recomputed in JavaScript (the page's demo/tracker.mjs) from MuJoCo quantities; this
 script writes what that needs, the large files gzipped for the page to download:
 
   model.mjb.gz    the task's scene model with its solver settings, as the simulator runs it
@@ -24,9 +24,9 @@ reference runs the policy with the weights the export stores (float16-rounded un
 of its states equals the env's.
 
   uv run ms-export-web --task Mjlab-SuperMimic-Flat-MyoFullBody --checkpoint <model.pt> \
-      --motion-file data/musclemimic/demo_clips.txt --out docs/website/demo/data/myofullbody
+      --motion-file data/musclemimic/demo_clips.txt --out ../muscle-supermimic-page/demo/data/myofullbody
   MS_HUMAN_700_ROOT=<MS-Human-700> uv run ms-export-web --task Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands \
-      --checkpoint <model.pt> --motion-file data/mshuman700_kit/demo_clips.txt --out docs/website/demo/data/mshuman700
+      --checkpoint <model.pt> --motion-file data/mshuman700_kit/demo_clips.txt --out ../muscle-supermimic-page/demo/data/mshuman700
 """
 
 from __future__ import annotations

@@ -9,7 +9,7 @@ import { gunzipSync } from 'node:zlib';
 import { join } from 'node:path';
 import loadMujoco from '@mujoco/mujoco';
 import * as ort from 'onnxruntime-web';
-import { Tracker } from '../../docs/website/demo/tracker.mjs';
+import { Tracker } from '../../../muscle-supermimic-page/demo/tracker.mjs';  // the page's repository, next to this one
 
 ort.env.wasm.numThreads = 1;
 const dir = process.argv[2];

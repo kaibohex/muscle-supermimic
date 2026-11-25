@@ -1,14 +1,16 @@
 """The README's "time to 0.83" figure (fast_training_light.svg, fast_training_dark.svg) from the project page's chart
-data (docs/website/static/data/charts.js, mshuman_speed): the same bars the page draws in its MS-Human-700 section.
+data (static/data/charts.js of kaibohex/muscle-supermimic-page, mshuman_speed): the same bars the page draws in its MS-Human-700 section, the
+paper's Fig. 3 and tab:ladder (every bar the mean of three seeds, labelled as the paper prints it).
 
-  python docs/assets/fast_training_svg.py
+  python docs/assets/fast_training_svg.py [charts.js]   # default: the page's repository checked out next to this one
 """
 
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-DATA = ROOT / "docs/website/static/data/charts.js"
+DATA = ROOT.parent / "muscle-supermimic-page/static/data/charts.js"
 OUT = ROOT / "docs/assets"
 
 THEMES = {
@@ -21,17 +23,19 @@ X0, PX_PER_H, ROW, BAR = 300.0, 91.12, 44, 20
 FONT = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 
 
-def t_label(m):
-    return f"{m / 60:.1f} h" if m >= 60 else f"{round(m)} min" if m >= 10 else f"{m:.1f} min"
+def t_label(shown):
+    """The mean as the paper prints it, without its standard deviation: '3.9 ± 1.0 h' -> '3.9 h'."""
+    mean, unit = shown.split(" ± ")[0].split(" ")[0], shown.split(" ")[-1]
+    return f"{mean} {unit}"
 
 
 def svg(sp, th):
     n = len(sp["minutes"])
-    fold = sp["minutes"][0] / sp["minutes"][-1]
+    notes = {n - 2: "37× sooner than the first release", n - 1: "the same checkpoints, refined"}  # the paper's ratio
     axis_bottom = 48 + ROW * n - 8
-    aria = ("Training time to a held-out normalized return of 0.83 on MS-Human-700, step by step: "
-            + "; ".join(f"{l} ({s}) {t_label(m)}" for l, s, m in zip(sp["label"], sp["sub"], sp["minutes"]))
-            + f"; {round(fold)} times faster in all")
+    aria = ("Training time to a held-out normalized return of 0.83 on MS-Human-700, step by step, each the mean of three "
+            "seeds: " + "; ".join(f"{l} ({s}) {t_label(v)}" for l, s, v in zip(sp["label"], sp["sub"], sp["shown"]))
+            + "; 37 times sooner than the first release at 50 Hz")
     color = {"base": th["base"], "theirs": th["theirs"], "ours": th["ours"], "both": "url(#both)"}
     o = [f'<svg xmlns="http://www.w3.org/2000/svg" width="860" height="{axis_bottom + 56}" '
          f'viewBox="0 0 860 {axis_bottom + 56}" font-family="{FONT}" role="img" aria-label="{aria}">',
@@ -40,7 +44,7 @@ def svg(sp, th):
          '</pattern></defs>',
          f'<text x="288" y="16" text-anchor="end" font-size="13" font-weight="600" fill="{th["text"]}">Time to 0.83 held-out</text>',
          f'<text x="300" y="16" font-size="12" fill="{th["sub"]}">MS-Human-700, 108 held-out clips, one RTX 5090; '
-         'each step adds to the one above</text>']
+         'each bar the mean of three seeds</text>']
     for h in range(5):
         x = X0 + PX_PER_H * h
         if h:
@@ -55,10 +59,10 @@ def svg(sp, th):
         o.append(f'<text x="288" y="{y + 8:.1f}" text-anchor="end" font-size="13" font-weight="500" fill="{th["text"]}">'
                  f'{sp["label"][i]}</text>')
         o.append(f'<text x="288" y="{y + 22:.1f}" text-anchor="end" font-size="11" fill="{th["sub"]}">{sp["sub"][i]}</text>')
-        step = "" if i == 0 else f"  {sp['minutes'][i - 1] / m:.1f}× faster" + (f", {round(fold)}× in all" if i == n - 1 else "")
+        step = f"  {notes[i]}" if i in notes else ""
         tspan = f'<tspan font-weight="400" fill="{th["sub"]}">{step}</tspan>' if step else ""
         o.append(f'<text x="{x1 + 8:.1f}" y="{y + 14:.1f}" font-size="12" font-weight="600" fill="{th["text"]}">'
-                 f'{t_label(m)}{tspan}</text>')
+                 f'{t_label(sp["shown"][i])}{tspan}</text>')
     ly = axis_bottom + 31
     for x, name, fill in ((300, "first release", th["base"]), (421, "from InstantTrack / BlinkMimic", th["theirs"]),
                           (647, "ours", th["ours"]), (712, "both", "url(#both)")):
@@ -69,7 +73,7 @@ def svg(sp, th):
 
 
 def main():
-    s = DATA.read_text().strip().rstrip(";")
+    s = Path(sys.argv[1] if len(sys.argv) > 1 else DATA).read_text().strip().rstrip(";")
     sp = json.loads(s[s.index("{"):])["mshuman_speed"]
     for name, th in THEMES.items():
         (OUT / f"fast_training_{name}.svg").write_text(svg(sp, th))

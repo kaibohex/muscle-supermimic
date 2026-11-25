@@ -1,6 +1,8 @@
 # Browser demo checks
 
-The demo itself is `docs/website/demo/` (published with the project page): MuJoCo's WebAssembly build
+The demo itself is `demo/` of the project page's repository,
+[kaibohex/muscle-supermimic-page](https://github.com/kaibohex/muscle-supermimic-page), checked out next to this one
+(`../muscle-supermimic-page`): MuJoCo's WebAssembly build
 (`@mujoco/mujoco`, the same version as the Python package) steps the task's scene model, onnxruntime-web runs the
 policy's decoder, three.js draws it, all from a CDN. The encoder sees only the reference, so its latent is
 precomputed for every frame. `tracker.mjs` there is the closed loop, shared with the Node checks here.
@@ -11,9 +13,9 @@ clips and, one file per clip, their latents and reference poses, gzipped). The p
 
 ```bash
 MS_HUMAN_700_ROOT=<MS-Human-700> uv run ms-export-web --task Mjlab-SuperMimic-Flat-MS-Human-700-Locked-Hands \
-    --checkpoint <model.pt> --motion-file data/mshuman700_kit/demo_clips.txt --out docs/website/demo/data/mshuman700
+    --checkpoint <model.pt> --motion-file data/mshuman700_kit/demo_clips.txt --out ../muscle-supermimic-page/demo/data/mshuman700
 uv run ms-export-web --task Mjlab-SuperMimic-Flat-MyoFullBody --checkpoint <model.pt> \
-    --motion-file data/musclemimic/demo_clips.txt --out docs/website/demo/data/myofullbody
+    --motion-file data/musclemimic/demo_clips.txt --out ../muscle-supermimic-page/demo/data/myofullbody
 ```
 
 The two clip lists name the same held-out clips, as each body's retargeting of them.
