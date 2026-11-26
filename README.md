@@ -7,6 +7,7 @@ muscles), on [mjlab](https://github.com/mujocolab/mjlab) / MuJoCo-Warp.
 <p align="center">
   <a href="https://muscle-supermimic.beanpow.top/"><img src="https://img.shields.io/badge/Project_page-2a78d6?style=for-the-badge" alt="Project page"></a>
   <a href="https://muscle-supermimic.beanpow.top/static/paper.pdf"><img src="https://img.shields.io/badge/Paper-7b4fa0?style=for-the-badge" alt="Paper"></a>
+  <a href="https://arxiv.org/abs/2611.33460"><img src="https://img.shields.io/badge/arXiv-2611.33460-b31b1b?style=for-the-badge" alt="arXiv"></a>
   <a href="https://muscle-supermimic.beanpow.top/demo/"><img src="https://img.shields.io/badge/Live_demo-1baf7a?style=for-the-badge" alt="Live demo"></a>
   <a href="https://muscle-supermimic.beanpow.top/#video"><img src="https://img.shields.io/badge/Video-eb6834?style=for-the-badge" alt="Video"></a>
 </p>
@@ -246,14 +247,15 @@ If you use this code, please cite:
 
 ```bibtex
 @misc{he2026musclesupermimic,
-  title        = {{muscle-supermimic}: Whole-Body Motion Tracking for
-                  Musculoskeletal Humanoids with One Differentiable
-                  World Model},
-  author       = {He, Kaibo and Bakowicz, Maciej and Zhou, Shihe and Feng, Yusen and
-                  Sui, Yanan and Radhakrishnan, Dhanush},
-  year         = {2026},
-  howpublished = {\url{https://github.com/kaibohex/muscle-supermimic}},
-  note         = {Project page: \url{https://muscle-supermimic.beanpow.top}}
+  title         = {Fast Muscle-Driven Whole-Body Motion Tracking with a
+                   Differentiable World Model},
+  author        = {He, Kaibo and Bakowicz, Maciej and Zhou, Shihe and
+                   Feng, Yusen and Sui, Yanan and Radhakrishnan, Dhanush},
+  year          = {2026},
+  eprint        = {2611.33460},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url           = {https://arxiv.org/abs/2611.33460}
 }
 ```
 
