@@ -26,8 +26,8 @@ keywords:
   - differentiable simulation
   - MuJoCo
 preferred-citation:
-  type: generic
-  title: "muscle-supermimic: Whole-Body Motion Tracking for Musculoskeletal Humanoids with One Differentiable World Model"
+  type: article
+  title: "Fast Muscle-Driven Whole-Body Motion Tracking with a Differentiable World Model"
   authors:
     - family-names: He
       given-names: Kaibo
@@ -42,5 +42,6 @@ preferred-citation:
     - family-names: Radhakrishnan
       given-names: Dhanush
   year: 2026
-  url: "https://github.com/kaibohex/muscle-supermimic"
-  notes: "Project page: https://muscle-supermimic.beanpow.top"
+  journal: "arXiv preprint arXiv:2611.33460"
+  doi: "10.48550/arXiv.2611.33460"
+  url: "https://arxiv.org/abs/2611.33460"
