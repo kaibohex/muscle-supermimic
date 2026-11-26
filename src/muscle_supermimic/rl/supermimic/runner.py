@@ -17,6 +17,7 @@ import csv
 import math
 import os
 import time
+import warnings
 from dataclasses import asdict, fields
 
 import torch
@@ -883,11 +884,24 @@ class SuperMimicRunner:
         ctrl = ck.get("ctrl") or {}
         self._decay_at = ctrl.get("decay_at")
         self.nonfinite.fill_(int(ctrl.get("nonfinite", 0)))
-        if self.ep_fail is not None and ctrl.get("ep_fail") is not None:
-            self.ep_fail.copy_(ctrl["ep_fail"].to(self.device))
-        if ctrl.get("focus_q") is not None:
-            self.cmd.set_focus(ctrl["focus_q"].to(self.device), ctrl["focus_share"])
-        self.probe_fail = ctrl.get("probe_fail", float("nan"))
+        bin_stats = (ctrl.get("ep_fail"), ctrl.get("focus_q"))
+        if any(stat is not None and stat.shape != (self.motion.num_bins,) for stat in bin_stats):
+            warnings.warn(
+                "Checkpoint reset-bin statistics do not match the current motion library; discarding failure counts "
+                "and focus distribution together. Subsequent evaluation probes will rebuild them.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            if self.ep_fail is not None:
+                self.ep_fail.zero_()
+            self.cmd.set_focus(None, 0.0)
+            self.probe_fail = float("nan")
+        else:
+            if self.ep_fail is not None and ctrl.get("ep_fail") is not None:
+                self.ep_fail.copy_(ctrl["ep_fail"].to(self.device))
+            if ctrl.get("focus_q") is not None:
+                self.cmd.set_focus(ctrl["focus_q"].to(self.device), ctrl["focus_share"])
+            self.probe_fail = ctrl.get("probe_fail", float("nan"))
         return ck
 
     def get_inference_policy(self, device=None):

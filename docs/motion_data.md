@@ -5,6 +5,13 @@ per line, relative to the list's directory; `#` comments) is a motion library, i
 path relative to the directory they share. Clips are resampled to the control rate (100 Hz); velocities
 come from finite differences, as in supermimic_vibed.
 
+A clip needs at least two frames after resampling. Reset bins contain only frames with a next frame in the same
+clip; its inclusive final frame remains available for terminal rewards, goals and failure bookkeeping, in the
+preceding transition's bin. This removes the old terminal-only bin when a clip ends exactly on a bin boundary.
+Loading a checkpoint whose per-bin statistics have the old size discards its failure counts and evaluation-focus
+distribution together with a warning; subsequent evaluation probes rebuild them. Network weights, optimizer state
+and training counters still load normally. Statistics with matching sizes restore as before.
+
 ## Formats
 
 * **canonical** (what `ms-retarget-myofullbody` writes): `fps`, `root_pos` (T,3)
